@@ -101,6 +101,8 @@
   .ghost{ background:var(--bg); color:var(--muted); }
   .hidden{ display:none !important; }
   .cls-row{ display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .chkrow{ display:flex; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line); font-size:15px; }
+  .chkrow input{ width:18px; height:18px; }
   .cls-row .cn{ font-size:12px; color:var(--muted); margin-left:auto; }
   .cls-row button{ border:0; background:transparent; color:var(--muted); font-size:13px; cursor:pointer; }
 </style>
@@ -136,7 +138,8 @@
     </section>
 
     <section id="studentsSec">
-      <div class="sec-head"><h2>学生</h2><span class="sub" id="stuCount"></span></div>
+      <div class="sec-head"><h2>学生</h2><span class="sub" id="stuCount"></span>
+        <button class="iconbtn" data-action="add-stu">加学生</button></div>
       <input class="search" id="search" placeholder="搜学生名字 / 班级" />
       <div id="stuList"></div>
     </section>
@@ -146,6 +149,7 @@
     <div class="detail-head">
       <button class="back" data-action="back-home">返回</button>
       <div class="detail-title" id="detailName"></div>
+      <button class="iconbtn" id="editStuBtn" data-action="edit-stu">改</button>
     </div>
     <div class="chips" id="chips"></div>
     <div id="timeline"></div>
@@ -358,6 +362,7 @@
     document.getElementById("detail").classList.remove("hidden");
     document.getElementById("home").classList.add("hidden");
     document.getElementById("detailName").textContent = s.name + (classNameOf(s)?(" · "+classNameOf(s)):"");
+    var editBtn = document.getElementById("editStuBtn"); if(editBtn) editBtn.setAttribute("data-id", s.id);
     var chips = ["全部"].concat(TYPES.map(function(t){return t.k;}));
     document.getElementById("chips").innerHTML = chips.map(function(t){
       return '<button class="chip'+(state.filter===t?" on":"")+'" data-action="filter" data-type="'+t+'">'+t+'</button>';
@@ -430,7 +435,8 @@
     var cl = currentLesson();
     var html = '<h3>写一笔</h3>'+
       (state.students.length?'<div class="field"><label>学生</label><select id="nt-stu">'+opts+'</select></div>'
-        :'<div class="field"><label>学生名字（自动新建）</label><input type="text" id="nt-newname" placeholder="如：小明"></div>')+
+        :'<div class="field"><label>学生名字（自动新建）</label><input type="text" id="nt-newname" placeholder="如：小明"></div>'+
+        '<div class="field"><label>班级（可不填，建好直接归班）</label><select id="nt-newclass">'+classOptions("")+'</select></div>')+
       '<div class="field"><label>类型</label><div id="nt-type">'+typePicker("上课")+'</div></div>'+
       '<div class="field"><label>日期</label><input type="date" id="nt-date" value="'+today()+'"></div>'+
       '<div class="field"><label>第几节（可不填）</label><input type="number" id="nt-lesson" value="'+(cl||"")+'" placeholder="自动估算"></div>'+
@@ -473,7 +479,7 @@
     var rows = state.classes.map(function(c){
       var n = state.students.filter(function(s){return s.classId===c.id;}).length;
       return '<div class="cls-row"><div>'+esc(c.name)+(c.term?' <span style="font-size:12px;color:var(--muted)">'+esc(c.term)+'</span>':'')+'<span class="cn">'+n+'人</span></div>'+
-        '<button data-action="edit-class" data-id="'+c.id+'">改</button><button data-action="del-class" data-id="'+c.id+'">删</button></div>';
+        '<button data-action="add-to-class" data-id="'+c.id+'">加学生</button><button data-action="edit-class" data-id="'+c.id+'">改</button><button data-action="del-class" data-id="'+c.id+'">删</button></div>';
     }).join("");
     var html = '<h3>班级管理</h3>'+
       (rows||'<div class="pending-empty">还没有班级，下面新建一个。</div>')+
@@ -482,6 +488,24 @@
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button>'+
       '<button class="primary" data-action="save-class">新建班级</button></div>';
     openModal(html);
+  }
+
+  function openClassAddModal(cid){
+    var c = state.classes.find(function(x){return x.id===cid;}); if(!c) return;
+    var others = state.students.filter(function(s){return s.classId!==cid;});
+    var rows = others.length ? others.map(function(s){
+      return '<label class="chkrow"><input type="checkbox" class="atc" value="'+s.id+'"> '+esc(s.name)+'</label>';
+    }).join("") : '<div class="pending-empty">没有可加的学生了（都已在别的班）。</div>';
+    var html = '<h3>把学生加入「'+esc(c.name)+'」</h3>'+
+      (others.length?'<div class="pending-empty">勾选要加进这个班的学生：</div>':'')+ rows +
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      (others.length?'<button class="primary" data-action="save-add-class" data-id="'+cid+'">加入本班</button>':'')+'</div>';
+    openModal(html);
+  }
+  function saveAddClass(cid){
+    var boxes = document.querySelectorAll(".atc:checked");
+    [].forEach.call(boxes, function(b){ var s=stuById(b.value); if(s){ s.classId=cid; s.classTag=""; stamp(s); } });
+    save(); closeModal(); openClassesModal();
   }
 
   function openTermModal(){
@@ -528,7 +552,7 @@
     var date = document.getElementById("nt-date").value || today();
     var lesson = document.getElementById("nt-lesson").value.trim();
     var text = document.getElementById("nt-text").value.trim();
-    if(isNew){ var ns={id:uid(), name:newName, classId:"", classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); sid=ns.id; }
+    if(isNew){ var nc=document.getElementById("nt-newclass"); var ncid=nc?nc.value:""; var ns={id:uid(), name:newName, classId:ncid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); sid=ns.id; }
     var ent = { id:uid(), studentId:sid, type:type, text:text, date:date, lesson:lesson?parseInt(lesson,10):null, createdAt:Date.now() };
     stamp(ent);
     if(type==="请假"||type==="补课") ent.status="待补";
@@ -699,6 +723,9 @@
       case "open-detail": state.currentStudent=id; state.filter="全部"; renderDetail(); break;
       case "back-home": showHome(); break;
       case "edit-stu": ev.stopPropagation(); openStuModal(id); break;
+      case "add-stu": openStuModal(null); break;
+      case "add-to-class": openClassAddModal(id); break;
+      case "save-add-class": saveAddClass(id); break;
       case "edit-entry": openEditModal(id); break;
       case "del-entry": if(confirm("删掉这条记录？")){ state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
       case "mark-done": markDone(id); break;
