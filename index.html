@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>学生记录</title>
+<style>
+  :root{
+    --radius:12px; --radius-sm:8px;
+    --t-class:#2563EB; --t-parent:#7C3AED; --t-leave:#D97706; --t-makeup:#0E7490; --t-note:#64748B;
+  }
+  body[data-theme="navy"]{ --bg:#EEF1F5; --card:#FFFFFF; --accent:#2C5DA8; --accent-strong:#FFFFFF; --text:#1F2A37; --muted:#6B7280; --line:rgba(15,23,42,.10); --alert:#C2410C; --alert-text:#FFFFFF; --chip:#E5EAF2; }
+  body[data-theme="slate"]{ --bg:#F1F3F5; --card:#FFFFFF; --accent:#3F4A5A; --accent-strong:#FFFFFF; --text:#1F2933; --muted:#6B7280; --line:rgba(15,23,42,.10); --alert:#B91C1C; --alert-text:#FFFFFF; --chip:#E7EAEE; }
+  body[data-theme="teal"]{ --bg:#EEF4F3; --card:#FFFFFF; --accent:#0F766E; --accent-strong:#FFFFFF; --text:#1A2E2B; --muted:#5F7A75; --line:rgba(15,40,40,.10); --alert:#B45309; --alert-text:#FFFFFF; --chip:#DDE9E6; }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{ background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; font-size:15px; line-height:1.6; }
+  .app{ max-width:520px; margin:0 auto; padding:0 16px calc(96px + env(safe-area-inset-bottom)); }
+
+  header{ position:sticky; top:0; z-index:5; background:var(--bg); padding:14px 0 8px; }
+  .topbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .greet{ font-size:13px; color:var(--muted); }
+  .title{ font-size:18px; font-weight:600; margin:2px 0 0; }
+  .spacer{ flex:1; }
+  .iconbtn{ border:0; background:var(--card); color:var(--text); border-radius:10px; padding:8px 10px; font-size:13px; box-shadow:0 1px 0 var(--line); cursor:pointer; }
+  .iconbtn:active{ transform:scale(.97); }
+
+  section{ margin-top:18px; }
+  .sec-head{ display:flex; align-items:center; gap:8px; margin:0 0 10px; }
+  .sec-head h2{ font-size:15px; font-weight:600; margin:0; }
+  .sec-head .sub{ font-size:12px; color:var(--muted); }
+  .sec-head .iconbtn{ margin-left:auto; }
+
+  /* pending */
+  .pending-empty{ background:var(--card); border-radius:var(--radius-sm); padding:14px; color:var(--muted); font-size:14px; text-align:center; }
+  .pend{ background:var(--card); border:1px solid var(--alert); border-left:5px solid var(--alert); border-radius:var(--radius-sm); padding:12px; margin-bottom:10px; }
+  .pend .row1{ display:flex; align-items:center; gap:8px; }
+  .pend .who{ font-weight:600; }
+  .pend .badge{ font-size:12px; font-weight:600; padding:2px 8px; border-radius:8px; color:#fff; }
+  .pend .date{ font-size:12px; color:var(--muted); margin-left:auto; }
+  .pend .txt{ font-size:13px; color:var(--text); margin:6px 0 8px; }
+  .pend .acts{ display:flex; gap:8px; align-items:center; }
+  .pend input[type=date]{ border:1px solid var(--line); border-radius:8px; padding:6px 8px; font-size:13px; background:var(--bg); color:var(--text); }
+
+  /* classes */
+  .class-list{ display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; }
+  .class-card{ border:1px solid var(--line); background:var(--card); border-radius:10px; padding:9px 13px; font-size:13px; white-space:nowrap; cursor:pointer; color:var(--text); flex:none; }
+  .class-card.on{ background:var(--accent); color:var(--accent-strong); border-color:transparent; font-weight:600; }
+  .class-card .cterm{ font-size:11px; opacity:.8; }
+  .class-card .cn{ font-size:11px; opacity:.7; margin-left:4px; }
+
+  /* student list */
+  .search{ width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 14px; font-size:15px; background:var(--card); color:var(--text); margin-bottom:12px; }
+  .stu{ display:flex; align-items:center; gap:12px; background:var(--card); border-radius:var(--radius); padding:14px; margin-bottom:10px; cursor:pointer; box-shadow:0 1px 0 var(--line); }
+  .stu:active{ transform:scale(.99); }
+  .avatar{ width:42px; height:42px; border-radius:50%; background:var(--accent); color:var(--accent-strong); display:flex; align-items:center; justify-content:center; font-weight:600; font-size:16px; flex:none; }
+  .stu .meta{ flex:1; min-width:0; }
+  .stu .name{ font-weight:600; }
+  .stu .tag{ font-size:12px; color:var(--muted); }
+  .stu .mini{ font-size:12px; color:var(--muted); }
+  .stu .edit{ border:0; background:transparent; color:var(--muted); font-size:13px; padding:6px; cursor:pointer; }
+
+  .actionbar{ position:fixed; left:0; right:0; bottom:0; z-index:6; background:var(--bg); padding:12px 16px calc(12px + env(safe-area-inset-bottom)); display:flex; gap:12px; max-width:520px; margin:0 auto; }
+  .actionbar button{ flex:1; border:0; border-radius:12px; padding:14px; font-size:15px; font-weight:600; cursor:pointer; }
+  .btn-lesson{ background:var(--accent); color:var(--accent-strong); }
+  .btn-note{ background:var(--card); color:var(--text); box-shadow:0 1px 0 var(--line); }
+
+  .detail-head{ display:flex; align-items:center; gap:10px; margin:6px 0 14px; }
+  .back{ border:0; background:var(--card); border-radius:10px; padding:8px 12px; font-size:14px; cursor:pointer; box-shadow:0 1px 0 var(--line); }
+  .detail-title{ font-size:17px; font-weight:600; }
+  .chips{ display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:10px; }
+  .chip{ border:0; background:var(--chip); color:var(--text); border-radius:10px; padding:7px 14px; font-size:13px; white-space:nowrap; cursor:pointer; }
+  .chip.on{ background:var(--accent); color:var(--accent-strong); font-weight:600; }
+
+  .entry{ background:var(--card); border-radius:var(--radius); padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 0 var(--line); }
+  .entry .erow{ display:flex; align-items:center; gap:8px; }
+  .dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .badge{ font-size:12px; font-weight:600; padding:2px 8px; border-radius:8px; color:#fff; }
+  .edate{ font-size:12px; color:var(--muted); margin-left:auto; white-space:nowrap; }
+  .etxt{ font-size:14px; margin:7px 0 0; white-space:pre-wrap; word-break:break-word; }
+  .eacts{ display:flex; gap:14px; margin-top:8px; }
+  .eacts button{ border:0; background:transparent; color:var(--muted); font-size:13px; padding:0; cursor:pointer; }
+
+  .empty{ text-align:center; color:var(--muted); padding:30px 10px; font-size:14px; }
+
+  .mask{ position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:20; display:flex; align-items:flex-end; justify-content:center; }
+  .sheet{ width:100%; max-width:520px; background:var(--card); border-radius:16px 16px 0 0; padding:18px 18px calc(20px + env(safe-area-inset-bottom)); max-height:90vh; overflow:auto; }
+  .sheet h3{ margin:0 0 14px; font-size:17px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+  .field input[type=text], .field input[type=date], .field input[type=number], .field textarea, .field select{ width:100%; border:1px solid var(--line); border-radius:12px; padding:11px 13px; font-size:15px; background:var(--bg); color:var(--text); font-family:inherit; }
+  .field textarea{ min-height:74px; resize:vertical; }
+  .stu-pick{ display:flex; flex-wrap:wrap; gap:8px; }
+  .pick{ border:1px solid var(--line); background:var(--bg); border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer; color:var(--text); }
+  .pick.on{ background:var(--accent); color:var(--accent-strong); border-color:transparent; font-weight:600; }
+  .seg{ display:flex; flex-wrap:wrap; gap:8px; }
+  .sheet-acts{ display:flex; gap:12px; margin-top:6px; }
+  .sheet-acts button{ flex:1; border:0; border-radius:14px; padding:13px; font-size:15px; font-weight:600; cursor:pointer; }
+  .primary{ background:var(--accent); color:var(--accent-strong); }
+  .ghost{ background:var(--bg); color:var(--muted); }
+  .hidden{ display:none !important; }
+  .cls-row{ display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .cls-row .cn{ font-size:12px; color:var(--muted); margin-left:auto; }
+  .cls-row button{ border:0; background:transparent; color:var(--muted); font-size:13px; cursor:pointer; }
+</style>
+</head>
+<body data-theme="navy">
+<div class="app">
+  <header>
+    <div class="topbar">
+      <div>
+        <div class="greet" id="greet"></div>
+        <div class="title">学生记录</div>
+      </div>
+      <div class="spacer"></div>
+      <span id="syncStatus" style="font-size:11px;color:var(--muted);margin-right:2px;"></span>
+      <button class="iconbtn" data-action="sync">同步</button>
+      <button class="iconbtn" data-action="switch-theme">换主题</button>
+      <button class="iconbtn" data-action="open-term">学期</button>
+      <button class="iconbtn" data-action="export">导出</button>
+      <button class="iconbtn" data-action="import">导入</button>
+    </div>
+  </header>
+
+  <main id="home">
+    <section id="pendingSec">
+      <div class="sec-head"><h2>待补课</h2><span class="sub" id="pendingCount"></span></div>
+      <div id="pendingList"></div>
+    </section>
+
+    <section id="classesSec">
+      <div class="sec-head"><h2>班级</h2><span class="sub" id="classCount"></span>
+        <button class="iconbtn" data-action="manage-classes">管理</button></div>
+      <div class="class-list" id="classList"></div>
+    </section>
+
+    <section id="studentsSec">
+      <div class="sec-head"><h2>学生</h2><span class="sub" id="stuCount"></span></div>
+      <input class="search" id="search" placeholder="搜学生名字 / 班级" />
+      <div id="stuList"></div>
+    </section>
+  </main>
+
+  <section id="detail" class="hidden">
+    <div class="detail-head">
+      <button class="back" data-action="back-home">返回</button>
+      <div class="detail-title" id="detailName"></div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div id="timeline"></div>
+    <div style="text-align:center; margin-top:6px;">
+      <button class="iconbtn" data-action="note-for" id="addForBtn" style="background:var(--card);">给 TA 写一笔</button>
+    </div>
+  </section>
+</div>
+
+<div class="actionbar">
+  <button class="btn-lesson" data-action="open-lesson">记一堂课</button>
+  <button class="btn-note" data-action="open-note">写一笔</button>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+(function(){
+  "use strict";
+  var TYPES = [
+    {k:"上课", c:"--t-class"},
+    {k:"家长", c:"--t-parent"},
+    {k:"请假", c:"--t-leave"},
+    {k:"补课", c:"--t-makeup"},
+    {k:"随手", c:"--t-note"}
+  ];
+  var THEMES = ["navy","slate","teal"];
+  var THEME_NAME = {navy:"商务蓝", slate:"石墨灰", teal:"墨绿"};
+
+  var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes";
+  var state = { students:[], entries:[], classes:[], settings:{theme:"navy", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
+
+  function load(){
+    try{ state.students = JSON.parse(localStorage.getItem(LS_STU)) || []; }catch(e){ state.students = []; }
+    try{ state.entries = JSON.parse(localStorage.getItem(LS_ENT)) || []; }catch(e){ state.entries = []; }
+    try{ state.classes = JSON.parse(localStorage.getItem(LS_CLS)) || []; }catch(e){ state.classes = []; }
+    try{ var s = JSON.parse(localStorage.getItem(LS_SET)); if(s) state.settings = s; }catch(e){}
+    if(!state.settings) state.settings = {theme:"navy"};
+    document.body.setAttribute("data-theme", state.settings.theme || "navy");
+  }
+  function saveLocal(){
+    localStorage.setItem(LS_STU, JSON.stringify(state.students));
+    localStorage.setItem(LS_ENT, JSON.stringify(state.entries));
+    localStorage.setItem(LS_CLS, JSON.stringify(state.classes));
+    localStorage.setItem(LS_SET, JSON.stringify(state.settings));
+  }
+  function save(){ saveLocal(); pushSync(); }
+
+  // ---- sync (GitHub) ----
+  function b64encode(str){ return btoa(unescape(encodeURIComponent(str))); }
+  function b64decode(b64){ return decodeURIComponent(escape(atob(b64))); }
+  function stamp(o){ o.updatedAt = Date.now(); }
+  function buildBlob(){
+    return { students:state.students, entries:state.entries, classes:state.classes,
+      settings:{theme:state.settings.theme, term:state.settings.term}, _savedAt:Date.now() };
+  }
+  function mergeBlob(local, remote){
+    function mergeArr(key){
+      var map={};
+      (remote[key]||[]).forEach(function(x){ map[x.id]=x; });
+      (local[key]||[]).forEach(function(x){ var r=map[x.id]; if(!r || (x.updatedAt||0) >= (r.updatedAt||0)) map[x.id]=x; });
+      return Object.keys(map).map(function(k){ return map[k]; });
+    }
+    return { students:mergeArr("students"), entries:mergeArr("entries"), classes:mergeArr("classes"),
+      settings: local.settings || remote.settings, _savedAt: Math.max(local._savedAt||0, remote._savedAt||0) };
+  }
+  function ghHeaders(s){ return { "Accept":"application/vnd.github+json", "Authorization":"Bearer "+s.token }; }
+  function githubGet(s){
+    return fetch("https://api.github.com/repos/"+s.owner+"/"+s.repo+"/contents/"+(s.path||"data.json"), {headers:ghHeaders(s)})
+      .then(function(r){ if(r.status===404) return null; if(!r.ok) return r.json().then(function(j){throw {status:r.status,msg:j&&j.message};}); return r.json(); });
+  }
+  function githubPut(s, body){
+    return fetch("https://api.github.com/repos/"+s.owner+"/"+s.repo+"/contents/"+(s.path||"data.json"),
+      {method:"PUT", headers:ghHeaders(s), body:JSON.stringify(body)})
+      .then(function(r){ if(!r.ok) return r.json().then(function(j){throw {status:r.status,msg:j&&j.message};}); return r.json(); });
+  }
+  function setStatus(t){ var el=document.getElementById("syncStatus"); if(el) el.textContent=t; }
+  function pushSync(attempt){
+    attempt = attempt||0;
+    var s = state.settings.sync; if(!s||!s.on) return;
+    setStatus("同步中…");
+    githubGet(s).then(function(res){
+      var local = buildBlob();
+      var blob = res ? mergeBlob(local, JSON.parse(b64decode(res.content))) : local;
+      var body = { message:"sync "+new Date().toISOString(), content: b64encode(JSON.stringify(blob)) };
+      if(res) body.sha = res.sha;
+      return githubPut(s, body).then(function(){ s.lastSync=Date.now(); saveLocal(); setStatus("已同步"); });
+    }).catch(function(err){
+      if(err && err.status===409 && attempt<3) return pushSync(attempt+1);
+      setStatus("同步失败"); console.warn("sync err", err);
+    });
+  }
+  function initSync(){
+    var s = state.settings.sync; if(!s||!s.on) return;
+    setStatus("同步中…");
+    githubGet(s).then(function(res){
+      if(!res) return;
+      var remote = JSON.parse(b64decode(res.content));
+      var merged = mergeBlob(buildBlob(), remote);
+      var backup = state.settings.sync;
+      state.students = merged.students; state.entries = merged.entries; state.classes = merged.classes;
+      if(merged.settings){ state.settings.theme = merged.settings.theme||state.settings.theme; state.settings.term = merged.settings.term||state.settings.term; }
+      state.settings.sync = backup;
+      document.body.setAttribute("data-theme", state.settings.theme||"navy");
+      s.lastSync = Date.now();
+      saveLocal(); render(); setStatus("已同步");
+    }).catch(function(){ setStatus("同步失败"); });
+  }
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function pad(n){ return n<10?"0"+n:""+n; }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
+  function colorOf(k){ for(var i=0;i<TYPES.length;i++) if(TYPES[i].k===k) return getComputedStyle(document.body).getPropertyValue(TYPES[i].c).trim(); return "#999"; }
+  function greet(){ var h=new Date().getHours(); return h<11?"早上好":(h<18?"下午好":"晚上好"); }
+
+  function computeLesson(start, per){
+    if(!start) return "";
+    var s = new Date(start); if(isNaN(s.getTime())) return "";
+    var days = Math.floor((Date.now() - s.getTime())/86400000);
+    if(days<0) return "";
+    var weeks = Math.floor(days/7);
+    var p = parseInt(per,10)||1;
+    return weeks*p + 1;
+  }
+  function currentLesson(){ var t=state.settings.term; return t?computeLesson(t.start, t.perWeek):""; }
+
+  function classNameOf(s){
+    if(s.classId){ var c=state.classes.find(function(x){return x.id===s.classId;}); if(c) return c.name + (c.term?(" · "+c.term):""); }
+    return s.classTag || "";
+  }
+  function classOptions(sel){
+    var o = '<option value="">不分组</option>';
+    state.classes.forEach(function(c){ o += '<option value="'+c.id+'"'+(c.id===sel?" selected":"")+'>'+esc(c.name)+(c.term?(" "+esc(c.term)):"")+'</option>'; });
+    return o;
+  }
+
+  // ---- derived ----
+  function pendingList(){
+    return state.entries.filter(function(e){ return (e.type==="请假"||e.type==="补课") && e.status!=="已补"; })
+      .sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
+  }
+  function stuName(id){ var s=state.students.find(function(x){return x.id===id;}); return s?s.name:"(已删)"; }
+  function stuById(id){ return state.students.find(function(x){return x.id===id;}); }
+
+  // ---- render ----
+  function render(){
+    document.getElementById("greet").textContent = greet();
+    renderPending();
+    renderClasses();
+    renderStudents();
+    if(state.currentStudent) renderDetail();
+  }
+
+  function renderPending(){
+    var list = pendingList();
+    document.getElementById("pendingCount").textContent = list.length ? ("共 "+list.length+" 条") : "";
+    var box = document.getElementById("pendingList");
+    if(!list.length){ box.innerHTML = '<div class="pending-empty">暂时没有需要补课的同学。</div>'; return; }
+    box.innerHTML = list.map(function(e){
+      var isLeave = e.type==="请假";
+      var dateInput = isLeave ? '<input type="date" data-mk="'+e.id+'" value="'+(e.makeUpDate||"")+'" title="补课日期">' : '';
+      var les = e.lesson ? (' 第'+e.lesson+'节') : '';
+      return '<div class="pend">'+
+        '<div class="row1"><span class="who">'+esc(stuName(e.studentId))+'</span>'+
+        '<span class="badge" style="background:'+colorOf(e.type)+'">'+e.type+'</span>'+
+        '<span class="date">'+esc(e.date||"")+les+'</span></div>'+
+        (e.text?'<div class="txt">'+esc(e.text)+'</div>':'')+
+        '<div class="acts">'+dateInput+
+        '<button class="done-btn" data-action="mark-done" data-id="'+e.id+'">标记已补</button></div>'+
+      '</div>';
+    }).join("");
+  }
+
+  function renderClasses(){
+    document.getElementById("classCount").textContent = state.classes.length ? (state.classes.length+" 个") : "";
+    var box = document.getElementById("classList");
+    var cards = '<div class="class-card'+(!state.activeClass?" on":"")+'" data-action="filter-class" data-id="">全部 · '+state.students.length+'人</div>';
+    cards += state.classes.map(function(c){
+      var n = state.students.filter(function(s){return s.classId===c.id;}).length;
+      return '<div class="class-card'+(state.activeClass===c.id?" on":"")+'" data-action="filter-class" data-id="'+c.id+'">'+esc(c.name)+(c.term?' <span class="cterm">'+esc(c.term)+'</span>':'')+'<span class="cn">'+n+'</span></div>';
+    }).join("");
+    box.innerHTML = cards;
+  }
+
+  function renderStudents(){
+    var q = (document.getElementById("search").value||"").trim().toLowerCase();
+    var list = state.students.filter(function(s){
+      if(state.activeClass && s.classId!==state.activeClass) return false;
+      if(!q) return true;
+      return (s.name||"").toLowerCase().indexOf(q)>=0 || classNameOf(s).toLowerCase().indexOf(q)>=0;
+    });
+    document.getElementById("stuCount").textContent = state.students.length ? (list.length+" / "+state.students.length+" 人") : "";
+    var box = document.getElementById("stuList");
+    if(!state.students.length){ box.innerHTML = '<div class="empty">还没有学生，点下面的「写一笔」先加一个，或先「记一堂课」时会自动建。</div>'; return; }
+    if(!list.length){ box.innerHTML = '<div class="empty">没搜到匹配的学生。</div>'; return; }
+    box.innerHTML = list.map(function(s){
+      var cnt = state.entries.filter(function(e){return e.studentId===s.id;}).length;
+      var pend = state.entries.filter(function(e){return e.studentId===s.id && (e.type==="请假"||e.type==="补课") && e.status!=="已补";}).length;
+      var tag = classNameOf(s) ? '<div class="tag">'+esc(classNameOf(s))+'</div>' : '';
+      var mini = cnt ? ('已记 '+cnt+' 条'+(pend?' · 待补课 '+pend:'')) : '还没记过';
+      return '<div class="stu" data-action="open-detail" data-id="'+s.id+'">'+
+        '<div class="avatar">'+esc((s.name||"?").slice(0,1))+'</div>'+
+        '<div class="meta"><div class="name">'+esc(s.name)+'</div>'+tag+'<div class="mini">'+mini+'</div></div>'+
+        '<button class="edit" data-action="edit-stu" data-id="'+s.id+'">改</button></div>';
+    }).join("");
+  }
+
+  function renderDetail(){
+    var s = stuById(state.currentStudent); if(!s) return;
+    document.getElementById("detail").classList.remove("hidden");
+    document.getElementById("home").classList.add("hidden");
+    document.getElementById("detailName").textContent = s.name + (classNameOf(s)?(" · "+classNameOf(s)):"");
+    var chips = ["全部"].concat(TYPES.map(function(t){return t.k;}));
+    document.getElementById("chips").innerHTML = chips.map(function(t){
+      return '<button class="chip'+(state.filter===t?" on":"")+'" data-action="filter" data-type="'+t+'">'+t+'</button>';
+    }).join("");
+    var ents = state.entries.filter(function(e){return e.studentId===s.id;});
+    if(state.filter!=="全部") ents = ents.filter(function(e){return e.type===state.filter;});
+    ents.sort(function(a,b){ return (b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0); });
+    var box = document.getElementById("timeline");
+    if(!ents.length){ box.innerHTML = '<div class="empty">这里还空空的，写一笔吧。</div>'; return; }
+    box.innerHTML = ents.map(function(e){
+      var st = (e.type==="请假"||e.type==="补课") ? (' · '+(e.status==="已补"?"已补":(e.makeUpDate?("约 "+e.makeUpDate):"待补"))) : '';
+      var les = e.lesson ? (' 第'+e.lesson+'节') : '';
+      return '<div class="entry">'+
+        '<div class="erow"><span class="dot" style="background:'+colorOf(e.type)+'"></span>'+
+        '<span class="badge" style="background:'+colorOf(e.type)+'">'+e.type+'</span>'+
+        '<span class="edate">'+esc(e.date||"")+les+esc(st)+'</span></div>'+
+        (e.text?'<div class="etxt">'+esc(e.text)+'</div>':'')+
+        '<div class="eacts"><button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+        '<button data-action="del-entry" data-id="'+e.id+'">删</button></div></div>';
+    }).join("");
+  }
+
+  function showHome(){
+    state.currentStudent = null;
+    document.getElementById("detail").classList.add("hidden");
+    document.getElementById("home").classList.remove("hidden");
+    render();
+  }
+
+  // ---- modals ----
+  function openModal(html){
+    var root = document.getElementById("modalRoot");
+    root.innerHTML = '<div class="mask"><div class="sheet">'+html+'</div></div>';
+    var mask = root.querySelector(".mask");
+    if(mask) mask.addEventListener("click", function(ev){ if(ev.target.classList.contains("mask")) closeModal(); });
+  }
+  function closeModal(){ document.getElementById("modalRoot").innerHTML = ""; }
+
+  function studentPicker(selected){
+    if(!state.students.length) return '<div class="empty">还没有学生，先去「写一笔」加一个吧。</div>';
+    return '<div class="stu-pick">'+state.students.map(function(s){
+      var on = selected && selected.indexOf(s.id)>=0 ? " on":"";
+      return '<span class="pick'+on+'" data-action="pick-stu" data-id="'+s.id+'">'+esc(s.name)+'</span>';
+    }).join("")+'</div>';
+  }
+  function typePicker(sel){
+    return '<div class="seg">'+TYPES.map(function(t){
+      var on = (sel||"上课")===t.k ? " on":"";
+      return '<span class="pick'+on+'" data-action="pick-type" data-type="'+t.k+'">'+t.k+'</span>';
+    }).join("")+'</div>';
+  }
+
+  function openLessonModal(){
+    var cl = currentLesson();
+    var html = '<h3>记一堂课</h3>'+
+      '<div class="field"><label>日期</label><input type="date" id="ls-date" value="'+today()+'"></div>'+
+      '<div class="field"><label>第几节（自动估算，可改）</label><input type="number" id="ls-lesson" value="'+(cl||"")+'" placeholder="如：4"></div>'+
+      '<div class="field"><label>班级（选后可一键选全班）</label><select id="ls-classsel">'+classOptions("")+'</select></div>'+
+      '<div class="field"><label>选学生（可多选；也可先选班级再点「选全班」）</label><div id="ls-pick">'+studentPicker([])+'</div>'+
+      '<button class="iconbtn" data-action="pick-class-all" style="background:var(--bg);margin-top:4px;">选全班</button></div>'+
+      '<div class="field"><label>写一句（课上情况 / 发了什么 / 重点）</label><textarea id="ls-text" placeholder="今天讲了函数，作业第5页"></textarea></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="save-lesson">保存到所选学生</button></div>';
+    openModal(html);
+  }
+
+  function openNoteModal(preStu){
+    var sel = preStu || (state.students[0]&&state.students[0].id) || "";
+    var opts = state.students.map(function(s){ return '<option value="'+s.id+'"'+(s.id===sel?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("");
+    var cl = currentLesson();
+    var html = '<h3>写一笔</h3>'+
+      (state.students.length?'<div class="field"><label>学生</label><select id="nt-stu">'+opts+'</select></div>'
+        :'<div class="field"><label>学生名字（自动新建）</label><input type="text" id="nt-newname" placeholder="如：小明"></div>')+
+      '<div class="field"><label>类型</label><div id="nt-type">'+typePicker("上课")+'</div></div>'+
+      '<div class="field"><label>日期</label><input type="date" id="nt-date" value="'+today()+'"></div>'+
+      '<div class="field"><label>第几节（可不填）</label><input type="number" id="nt-lesson" value="'+(cl||"")+'" placeholder="自动估算"></div>'+
+      '<div class="field"><label>写一句</label><textarea id="nt-text" placeholder="一两句话就够"></textarea></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="save-note">保存</button></div>';
+    openModal(html);
+  }
+
+  function openEditModal(id){
+    var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
+    pickedType = e.type;
+    var isLC = (e.type==="请假"||e.type==="补课");
+    var mk = isLC ? '<div class="field"><label>补课日期（可不填）</label><input type="date" id="ed-mk" value="'+(e.makeUpDate||"")+'"></div>'+
+      '<div class="field"><label>补课第几节（可不填）</label><input type="number" id="ed-mklesson" value="'+(e.lesson||"")+'" placeholder="如：6"></div>'+
+      '<div class="field"><label><input type="checkbox" id="ed-done"'+(e.status==="已补"?" checked":"")+'> 已补 / 已安排</label></div>' : '';
+    var html = '<h3>改一笔</h3>'+
+      '<div class="field"><label>类型</label><div id="ed-type">'+typePicker(e.type)+'</div></div>'+
+      '<div class="field"><label>日期</label><input type="date" id="ed-date" value="'+(e.date||today())+'"></div>'+
+      (isLC?'<div class="field"><label>第几节（可不填）</label><input type="number" id="ed-lesson" value="'+(e.lesson||"")+'" placeholder="如：4"></div>':'')+
+      '<div class="field"><label>内容</label><textarea id="ed-text">'+esc(e.text||"")+'</textarea></div>'+
+      mk+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="save-edit" data-id="'+id+'">保存</button></div>';
+    openModal(html);
+  }
+
+  function openStuModal(id){
+    var s = id?stuById(id):null;
+    var html = '<h3>'+(s?'改学生':'加学生')+'</h3>'+
+      '<div class="field"><label>名字</label><input type="text" id="st-name" value="'+esc(s?s.name:"")+'" placeholder="如：小明"></div>'+
+      '<div class="field"><label>班级</label><select id="st-class">'+classOptions(s?s.classId:"")+'</select></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      (s?'<button class="ghost" data-action="del-stu" data-id="'+id+'">删除</button>':'')+
+      '<button class="primary" data-action="save-stu" data-id="'+(id||"")+'">保存</button></div>';
+    openModal(html);
+  }
+
+  function openClassesModal(){
+    var rows = state.classes.map(function(c){
+      var n = state.students.filter(function(s){return s.classId===c.id;}).length;
+      return '<div class="cls-row"><div>'+esc(c.name)+(c.term?' <span style="font-size:12px;color:var(--muted)">'+esc(c.term)+'</span>':'')+'<span class="cn">'+n+'人</span></div>'+
+        '<button data-action="edit-class" data-id="'+c.id+'">改</button><button data-action="del-class" data-id="'+c.id+'">删</button></div>';
+    }).join("");
+    var html = '<h3>班级管理</h3>'+
+      (rows||'<div class="pending-empty">还没有班级，下面新建一个。</div>')+
+      '<div class="field" style="margin-top:14px;"><label>新建 / 改名</label><input type="text" id="cl-name" placeholder="班级名，如：高一数学班"></div>'+
+      '<div class="field"><label>学期 / 季节（可不填，用来区分不同阶段）</label><input type="text" id="cl-term" placeholder="如：2026秋"></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button>'+
+      '<button class="primary" data-action="save-class">新建班级</button></div>';
+    openModal(html);
+  }
+
+  function openTermModal(){
+    var t = state.settings.term||{start:"",perWeek:1};
+    var html = '<h3>学期设置</h3>'+
+      '<div class="field"><label>开学日期（用来估算"今天第几节"）</label><input type="date" id="tm-start" value="'+(t.start||"")+'"></div>'+
+      '<div class="field"><label>每周几节课</label><input type="number" id="tm-per" min="1" value="'+(t.perWeek||1)+'"></div>'+
+      '<div class="pending-empty" id="tm-preview"></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="save-term">保存</button></div>';
+    openModal(html);
+    updateTermPreview();
+    document.getElementById("tm-start").addEventListener("input", updateTermPreview);
+    document.getElementById("tm-per").addEventListener("input", updateTermPreview);
+  }
+  function updateTermPreview(){
+    var s=document.getElementById("tm-start"), p=document.getElementById("tm-per"), pv=document.getElementById("tm-preview");
+    if(!s||!p||!pv) return;
+    var lv = computeLesson(s.value, p.value);
+    pv.textContent = lv ? ("今天是：第 "+lv+" 节") : "填好开学日期后，会显示今天是第几节";
+  }
+
+  // ---- actions ----
+  var pickedStu = []; var pickedType = "上课";
+
+  function saveLesson(){
+    var date = document.getElementById("ls-date").value || today();
+    var lesson = document.getElementById("ls-lesson").value.trim();
+    var text = document.getElementById("ls-text").value.trim();
+    if(!pickedStu.length){ alert("先选至少一个学生"); return; }
+    var lessonId = uid();
+    pickedStu.forEach(function(sid){
+      var ent = { id:uid(), studentId:sid, type:"上课", text:text, date:date, lesson:lesson?parseInt(lesson,10):null, lessonId:lessonId, createdAt:Date.now() };
+      stamp(ent); state.entries.push(ent);
+    });
+    save(); closeModal(); pickedStu=[]; render();
+  }
+
+  function saveNote(){
+    var sid, isNew=false, newName="";
+    if(state.students.length){ sid = document.getElementById("nt-stu").value; }
+    else { newName = document.getElementById("nt-newname").value.trim(); if(!newName){ alert("填一下学生名字"); return; } isNew=true; }
+    var type = pickedType;
+    var date = document.getElementById("nt-date").value || today();
+    var lesson = document.getElementById("nt-lesson").value.trim();
+    var text = document.getElementById("nt-text").value.trim();
+    if(isNew){ var ns={id:uid(), name:newName, classId:"", classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); sid=ns.id; }
+    var ent = { id:uid(), studentId:sid, type:type, text:text, date:date, lesson:lesson?parseInt(lesson,10):null, createdAt:Date.now() };
+    stamp(ent);
+    if(type==="请假"||type==="补课") ent.status="待补";
+    state.entries.push(ent);
+    save(); closeModal(); pickedStu=[]; pickedType="上课";
+    if(state.currentStudent===sid) renderDetail(); else render();
+  }
+
+  function saveEdit(id){
+    var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
+    stamp(e);
+    e.type = pickedType;
+    e.date = document.getElementById("ed-date").value || today();
+    if(e.type==="请假"||e.type==="补课"){
+      e.makeUpDate = document.getElementById("ed-mk").value || "";
+      e.status = document.getElementById("ed-done").checked ? "已补" : "待补";
+      var ml = document.getElementById("ed-mklesson").value.trim();
+      if(ml) e.lesson = parseInt(ml,10);
+    } else {
+      delete e.status; delete e.makeUpDate;
+      var el = document.getElementById("ed-lesson"); var ev = el?el.value.trim():"";
+      e.lesson = ev ? parseInt(ev,10) : null;
+    }
+    e.text = document.getElementById("ed-text").value.trim();
+    save(); closeModal(); pickedType="上课"; render();
+  }
+
+  function saveStu(id){
+    var name = document.getElementById("st-name").value.trim();
+    var cid = document.getElementById("st-class").value;
+    if(!name){ alert("名字不能为空"); return; }
+    if(id){ var s=stuById(id); s.name=name; s.classId=cid; s.classTag=""; stamp(s); }
+    else { var ns={id:uid(), name:name, classId:cid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); }
+    save(); closeModal(); render();
+  }
+
+  function delStu(id){
+    if(!confirm("删除该学生会一并删掉 TA 的所有记录，确定？")) return;
+    state.students = state.students.filter(function(s){return s.id!==id;});
+    state.entries = state.entries.filter(function(e){return e.studentId!==id;});
+    save(); closeModal(); if(state.currentStudent===id) showHome(); else render();
+  }
+
+  function saveClass(){
+    var name = document.getElementById("cl-name").value.trim();
+    var term = document.getElementById("cl-term").value.trim();
+    if(!name){ alert("填一下班级名"); return; }
+    var c = {id:uid(), name:name, term:term}; stamp(c); state.classes.push(c);
+    save(); openClassesModal();
+  }
+  function delClass(id){
+    if(!confirm("删除班级不会删学生，只是去掉他们的班级归属，确定？")) return;
+    state.classes = state.classes.filter(function(c){return c.id!==id;});
+    state.students.forEach(function(s){ if(s.classId===id) s.classId=""; });
+    save(); openClassesModal();
+  }
+
+  function markDone(id){
+    var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
+    var mkInput = document.querySelector('[data-mk="'+id+'"]');
+    if(mkInput && mkInput.value) e.makeUpDate = mkInput.value;
+    e.status = "已补"; stamp(e);
+    save(); renderPending();
+  }
+
+  function switchTheme(){
+    var i = THEMES.indexOf(state.settings.theme||"navy");
+    state.settings.theme = THEMES[(i+1)%THEMES.length];
+    document.body.setAttribute("data-theme", state.settings.theme);
+    save();
+  }
+
+  function openExportModal(){
+    var data = { students:state.students, entries:state.entries, classes:state.classes, settings:state.settings, _app:"学生记录" };
+    var json = JSON.stringify(data,null,2);
+    var html = '<h3>导出备份</h3>'+
+      '<div class="field"><label>把下面的内容复制，存到微信文件传输助手 / 备忘录（换手机或链接失效时靠它恢复）</label>'+
+      '<textarea id="exp-text" readonly style="min-height:160px;"></textarea></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button>'+
+      '<button class="primary" data-action="copy-exp">复制</button></div>';
+    openModal(html);
+    var ta = document.getElementById("exp-text"); if(ta) ta.value = json;
+  }
+  function copyExp(){
+    var t = document.getElementById("exp-text"); if(!t) return;
+    t.select(); t.setSelectionRange(0, t.value.length);
+    var ok = false;
+    if(navigator.clipboard && navigator.clipboard.writeText){ try{ navigator.clipboard.writeText(t.value); ok = true; }catch(e){} }
+    if(!ok){ try{ ok = document.execCommand("copy"); }catch(e){} }
+    alert(ok ? "已复制，去微信文件传输助手粘贴保存吧" : "复制失败，请手动长按全选复制");
+  }
+  function openImportModal(){
+    var html = '<h3>导入备份</h3>'+
+      '<div class="field"><label>方式一：粘贴之前复制的备份文本</label><textarea id="imp-text" placeholder="把备份文本粘贴到这里" style="min-height:120px;"></textarea></div>'+
+      '<div class="field"><label>方式二：选择 .json 备份文件</label>'+
+      '<button type="button" class="iconbtn" id="imp-file-btn" style="background:var(--bg)">选择文件</button>'+
+      '<input type="file" id="imp-file" accept="application/json" class="hidden"></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="do-import">导入并覆盖</button></div>';
+    openModal(html);
+    setTimeout(function(){
+      var fb = document.getElementById("imp-file-btn"), fi = document.getElementById("imp-file");
+      if(fb && fi) fb.onclick = function(){ fi.click(); };
+      if(fi) fi.onchange = function(e){
+        if(e.target.files[0]){ var r = new FileReader(); r.onload = function(){ var ta=document.getElementById("imp-text"); if(ta) ta.value = r.result; }; r.readAsText(e.target.files[0]); e.target.value=""; }
+      };
+    }, 0);
+  }
+  function doImport(){
+    var raw = (document.getElementById("imp-text").value||"").trim();
+    if(!raw){ alert("先粘贴文本或选文件"); return; }
+    try{
+      var d = JSON.parse(raw);
+      if(!d || !Array.isArray(d.students) || !Array.isArray(d.entries)){ alert("内容格式不对"); return; }
+      if(!confirm("导入会覆盖当前所有数据，确定继续？")) return;
+      state.students = d.students; state.entries = d.entries;
+      state.classes = Array.isArray(d.classes)?d.classes:[];
+      (state.students||[]).forEach(stamp); (state.entries||[]).forEach(stamp); (state.classes||[]).forEach(stamp);
+      if(d.settings) state.settings = d.settings;
+      document.body.setAttribute("data-theme", state.settings.theme||"navy");
+      save(); closeModal(); showHome();
+    }catch(e){ alert("读不懂这段内容"); }
+  }
+
+  // ---- sync UI ----
+  function openSyncModal(){
+    var s = state.settings.sync || {on:false, owner:"", repo:"", token:"", path:"data.json"};
+    var cfg;
+    if(s.on){
+      cfg = '<div class="pending-empty">已开启同步<br>仓库 '+esc(s.owner)+' / '+esc(s.repo)+'<br>最后同步：'+(s.lastSync?new Date(s.lastSync).toLocaleString():'—')+'</div>'+
+        '<div class="sheet-acts"><button class="ghost" data-action="sync-now">立即同步</button>'+
+        '<button class="ghost" data-action="sync-off">退出同步</button></div>';
+    } else {
+      cfg = '<div class="field"><label>GitHub 用户名（仓库所有者）</label><input type="text" id="sy-owner" placeholder="如：jenny123"></div>'+
+        '<div class="field"><label>私有仓库名（放数据用）</label><input type="text" id="sy-repo" placeholder="如：student-data"></div>'+
+        '<div class="field"><label>访问令牌 Token</label><input type="text" id="sy-token" placeholder="ghp_ 开头的一串"></div>'+
+        '<div class="pending-empty">令牌只存在你手机本地，不会发给我。第一次保存会自动建 data.json。不想用了可在 GitHub 设置里随时撤销。</div>'+
+        '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+        '<button class="primary" data-action="sync-on">开启同步</button></div>';
+    }
+    openModal('<h3>多端同步（GitHub）</h3>'+cfg);
+  }
+  function enableSync(){
+    var owner=document.getElementById("sy-owner").value.trim();
+    var repo=document.getElementById("sy-repo").value.trim();
+    var token=document.getElementById("sy-token").value.trim();
+    if(!owner||!repo||!token){ alert("三项都要填"); return; }
+    state.settings.sync={on:true, owner:owner, repo:repo, token:token, path:"data.json"};
+    saveLocal(); closeModal(); initSync();
+  }
+  function disableSync(){
+    state.settings.sync={on:false}; saveLocal(); closeModal(); setStatus("");
+  }
+  function syncNow(){ initSync(); }
+
+  // ---- delegation ----
+  document.addEventListener("click", function(ev){
+    var el = ev.target.closest("[data-action]"); if(!el) return;
+    var a = el.getAttribute("data-action"); var id = el.getAttribute("data-id");
+    switch(a){
+      case "switch-theme": switchTheme(); break;
+      case "open-term": openTermModal(); break;
+      case "export": openExportModal(); break;
+      case "import": openImportModal(); break;
+      case "open-lesson": pickedStu=[]; openLessonModal(); break;
+      case "open-note": pickedType="上课"; openNoteModal(); break;
+      case "note-for": pickedType="上课"; openNoteModal(state.currentStudent); break;
+      case "open-detail": state.currentStudent=id; state.filter="全部"; renderDetail(); break;
+      case "back-home": showHome(); break;
+      case "edit-stu": ev.stopPropagation(); openStuModal(id); break;
+      case "edit-entry": openEditModal(id); break;
+      case "del-entry": if(confirm("删掉这条记录？")){ state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
+      case "mark-done": markDone(id); break;
+      case "filter": state.filter = el.getAttribute("data-type"); renderDetail(); break;
+      case "filter-class": state.activeClass = id || null; renderClasses(); renderStudents(); break;
+      case "manage-classes": openClassesModal(); break;
+      case "save-class": saveClass(); break;
+      case "edit-class": openClassEdit(id); break;
+      case "del-class": delClass(id); break;
+      case "save-term": saveTerm(); break;
+      case "update-class": updateClass(id); break;
+      case "close-modal": closeModal(); pickedStu=[]; pickedType="上课"; break;
+      case "save-lesson": saveLesson(); break;
+      case "save-note": saveNote(); break;
+      case "save-edit": saveEdit(id); break;
+      case "save-stu": saveStu(id); break;
+      case "copy-exp": copyExp(); break;
+      case "do-import": doImport(); break;
+      case "del-stu": delStu(id); break;
+      case "sync": openSyncModal(); break;
+      case "sync-on": enableSync(); break;
+      case "sync-off": disableSync(); break;
+      case "sync-now": syncNow(); break;
+      case "pick-class-all": {
+        var cid = document.getElementById("ls-classsel").value;
+        if(!cid){ alert("先在上一个框选班级"); break; }
+        pickedStu = state.students.filter(function(s){return s.classId===cid;}).map(function(s){return s.id;});
+        document.getElementById("ls-pick").innerHTML = studentPicker(pickedStu);
+        break;
+      }
+      case "pick-stu":
+        var sid = id; var i = pickedStu.indexOf(sid);
+        if(i>=0) pickedStu.splice(i,1); else pickedStu.push(sid);
+        el.classList.toggle("on"); break;
+      case "pick-type":
+        pickedType = el.getAttribute("data-type");
+        var seg = el.parentNode; [].forEach.call(seg.children, function(c){ c.classList.remove("on"); });
+        el.classList.add("on"); break;
+    }
+  });
+
+  function openClassEdit(id){
+    var c = state.classes.find(function(x){return x.id===id;}); if(!c) return;
+    var html = '<h3>改班级</h3>'+
+      '<div class="field"><label>班级名</label><input type="text" id="cl-name" value="'+esc(c.name)+'"></div>'+
+      '<div class="field"><label>学期 / 季节</label><input type="text" id="cl-term" value="'+esc(c.term||"")+'"></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button>'+
+      '<button class="primary" data-action="update-class" data-id="'+id+'">保存</button></div>';
+    openModal(html);
+  }
+  function updateClass(id){
+    var c = state.classes.find(function(x){return x.id===id;}); if(!c) return;
+    var name = document.getElementById("cl-name").value.trim();
+    if(!name){ alert("填一下班级名"); return; }
+    c.name = name; c.term = document.getElementById("cl-term").value.trim(); stamp(c);
+    save(); openClassesModal();
+  }
+  function saveTerm(){
+    state.settings.term = { start:document.getElementById("tm-start").value, perWeek:parseInt(document.getElementById("tm-per").value,10)||1 };
+    save(); closeModal(); render();
+  }
+
+  document.getElementById("search").addEventListener("input", renderStudents);
+
+  load();
+  if(state.settings.sync && state.settings.sync.on){ initSync(); } else { render(); }
+})();
+</script>
+</body>
+</html>
