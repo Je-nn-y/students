@@ -179,8 +179,8 @@
   var THEMES = ["navy","slate","teal"];
   var THEME_NAME = {navy:"商务蓝", slate:"石墨灰", teal:"墨绿"};
 
-  var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes";
-  var state = { students:[], entries:[], classes:[], settings:{theme:"navy", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
+  var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes", LS_TOMB = "sr_tomb";
+  var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, settings:{theme:"navy", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
 
   function load(){
     try{ state.students = JSON.parse(localStorage.getItem(LS_STU)) || []; }catch(e){ state.students = []; }
@@ -188,12 +188,14 @@
     try{ state.classes = JSON.parse(localStorage.getItem(LS_CLS)) || []; }catch(e){ state.classes = []; }
     try{ var s = JSON.parse(localStorage.getItem(LS_SET)); if(s) state.settings = s; }catch(e){}
     if(!state.settings) state.settings = {theme:"navy"};
+    try{ var tb = JSON.parse(localStorage.getItem(LS_TOMB)); if(tb && tb.students) state.tomb = tb; else state.tomb = {students:[],entries:[],classes:[]}; }catch(e){ state.tomb = {students:[],entries:[],classes:[]}; }
     document.body.setAttribute("data-theme", state.settings.theme || "navy");
   }
   function saveLocal(){
     localStorage.setItem(LS_STU, JSON.stringify(state.students));
     localStorage.setItem(LS_ENT, JSON.stringify(state.entries));
     localStorage.setItem(LS_CLS, JSON.stringify(state.classes));
+    localStorage.setItem(LS_TOMB, JSON.stringify(state.tomb));
     localStorage.setItem(LS_SET, JSON.stringify(state.settings));
   }
   function save(){ saveLocal(); pushSync(); }
@@ -203,17 +205,23 @@
   function b64decode(b64){ return decodeURIComponent(escape(atob(b64))); }
   function stamp(o){ o.updatedAt = Date.now(); }
   function buildBlob(){
-    return { students:state.students, entries:state.entries, classes:state.classes,
+    return { students:state.students, entries:state.entries, classes:state.classes, tomb:state.tomb,
       settings:{theme:state.settings.theme, term:state.settings.term}, _savedAt:Date.now() };
   }
   function mergeBlob(local, remote){
+    function uniq(a){ var m={}, r=[]; a.forEach(function(x){ if(!m[x]){ m[x]=1; r.push(x); } }); return r; }
     function mergeArr(key){
       var map={};
       (remote[key]||[]).forEach(function(x){ map[x.id]=x; });
       (local[key]||[]).forEach(function(x){ var r=map[x.id]; if(!r || (x.updatedAt||0) >= (r.updatedAt||0)) map[x.id]=x; });
+      var tomb = (local.tomb&&local.tomb[key]||[]).concat(remote.tomb&&remote.tomb[key]||[]);
+      tomb.forEach(function(id){ delete map[id]; });
       return Object.keys(map).map(function(k){ return map[k]; });
     }
+    var lt = local.tomb||{students:[],entries:[],classes:[]};
+    var rt = remote.tomb||{students:[],entries:[],classes:[]};
     return { students:mergeArr("students"), entries:mergeArr("entries"), classes:mergeArr("classes"),
+      tomb:{ students:uniq(lt.students.concat(rt.students)), entries:uniq(lt.entries.concat(rt.entries)), classes:uniq(lt.classes.concat(rt.classes)) },
       settings: local.settings || remote.settings, _savedAt: Math.max(local._savedAt||0, remote._savedAt||0) };
   }
   function ghHeaders(s){ return { "Accept":"application/vnd.github+json", "Authorization":"Bearer "+s.token }; }
@@ -251,11 +259,12 @@
       var merged = mergeBlob(buildBlob(), remote);
       var backup = state.settings.sync;
       state.students = merged.students; state.entries = merged.entries; state.classes = merged.classes;
+      state.tomb = merged.tomb || {students:[],entries:[],classes:[]};
       if(merged.settings){ state.settings.theme = merged.settings.theme||state.settings.theme; state.settings.term = merged.settings.term||state.settings.term; }
       state.settings.sync = backup;
       document.body.setAttribute("data-theme", state.settings.theme||"navy");
       s.lastSync = Date.now();
-      saveLocal(); render(); setStatus("已同步");
+      saveLocal(); render(); setStatus("已同步"); pushSync();
     }).catch(function(){ setStatus("同步失败"); });
   }
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -591,6 +600,8 @@
 
   function delStu(id){
     if(!confirm("删除该学生会一并删掉 TA 的所有记录，确定？")) return;
+    state.tomb.students.push(id);
+    state.entries.forEach(function(e){ if(e.studentId===id) state.tomb.entries.push(e.id); });
     state.students = state.students.filter(function(s){return s.id!==id;});
     state.entries = state.entries.filter(function(e){return e.studentId!==id;});
     save(); closeModal(); if(state.currentStudent===id) showHome(); else render();
@@ -605,8 +616,9 @@
   }
   function delClass(id){
     if(!confirm("删除班级不会删学生，只是去掉他们的班级归属，确定？")) return;
+    state.tomb.classes.push(id);
     state.classes = state.classes.filter(function(c){return c.id!==id;});
-    state.students.forEach(function(s){ if(s.classId===id) s.classId=""; });
+    state.students.forEach(function(s){ if(s.classId===id){ s.classId=""; stamp(s); } });
     save(); openClassesModal();
   }
 
@@ -727,7 +739,7 @@
       case "add-to-class": openClassAddModal(id); break;
       case "save-add-class": saveAddClass(id); break;
       case "edit-entry": openEditModal(id); break;
-      case "del-entry": if(confirm("删掉这条记录？")){ state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
+      case "del-entry": if(confirm("删掉这条记录？")){ state.tomb.entries.push(id); state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
       case "mark-done": markDone(id); break;
       case "filter": state.filter = el.getAttribute("data-type"); renderDetail(); break;
       case "filter-class": state.activeClass = id || null; renderClasses(); renderStudents(); break;
