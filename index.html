@@ -105,6 +105,20 @@
   .chkrow input{ width:18px; height:18px; }
   .cls-row .cn{ font-size:12px; color:var(--muted); margin-left:auto; }
   .cls-row button{ border:0; background:transparent; color:var(--muted); font-size:13px; cursor:pointer; }
+
+  /* 班级管理整页 + 更多菜单 */
+  .page-head{ display:flex; align-items:center; gap:10px; margin:6px 0 14px; }
+  .page-title{ font-size:17px; font-weight:600; }
+  .page-head .iconbtn{ margin-left:auto; }
+  .cls-manage-row{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px; box-shadow:0 1px 0 var(--line); }
+  .cls-manage-row .cm-info{ font-weight:600; margin-bottom:10px; display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+  .cls-manage-row .cm-info .cm-term{ font-size:12px; color:var(--muted); font-weight:400; }
+  .cls-manage-row .cm-info .cm-n{ font-size:12px; color:var(--muted); }
+  .cls-acts{ display:flex; gap:10px; align-items:center; }
+  .cls-acts button{ border:0; background:var(--chip); color:var(--text); border-radius:10px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  .cls-acts .danger{ background:transparent; color:var(--alert); border:1px solid var(--alert); margin-left:auto; }
+  .more-item{ width:100%; text-align:left; border:0; background:var(--bg); color:var(--text); border-radius:12px; padding:15px 16px; font-size:15px; margin-bottom:8px; cursor:pointer; box-shadow:0 1px 0 var(--line); }
+  .more-item .sub{ font-size:12px; color:var(--muted); margin-left:6px; }
 </style>
 </head>
 <body data-theme="navy">
@@ -117,11 +131,7 @@
       </div>
       <div class="spacer"></div>
       <span id="syncStatus" style="font-size:11px;color:var(--muted);margin-right:2px;"></span>
-      <button class="iconbtn" data-action="sync">同步</button>
-      <button class="iconbtn" data-action="switch-theme">换主题</button>
-      <button class="iconbtn" data-action="open-term">学期</button>
-      <button class="iconbtn" data-action="export">导出</button>
-      <button class="iconbtn" data-action="import">导入</button>
+      <button class="iconbtn" data-action="open-more">⚙️ 更多</button>
     </div>
   </header>
 
@@ -157,6 +167,15 @@
       <button class="iconbtn" data-action="note-for" id="addForBtn" style="background:var(--card);">给 TA 写一笔</button>
     </div>
   </section>
+
+  <section id="classPage" class="hidden">
+    <div class="page-head">
+      <button class="back" data-action="back-home">返回</button>
+      <div class="page-title">班级管理</div>
+      <button class="iconbtn" data-action="new-class">＋新建</button>
+    </div>
+    <div id="classManageList"></div>
+  </section>
 </div>
 
 <div class="actionbar">
@@ -180,7 +199,7 @@
   var THEME_NAME = {navy:"商务蓝", slate:"石墨灰", teal:"墨绿"};
 
   var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes", LS_TOMB = "sr_tomb";
-  var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, settings:{theme:"navy", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
+  var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, settings:{theme:"navy", lastStu:"", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
 
   function load(){
     try{ state.students = JSON.parse(localStorage.getItem(LS_STU)) || []; }catch(e){ state.students = []; }
@@ -397,7 +416,9 @@
   function showHome(){
     state.currentStudent = null;
     document.getElementById("detail").classList.add("hidden");
+    document.getElementById("classPage").classList.add("hidden");
     document.getElementById("home").classList.remove("hidden");
+    document.querySelector(".actionbar").classList.remove("hidden");
     render();
   }
 
@@ -439,8 +460,11 @@
   }
 
   function openNoteModal(preStu){
-    var sel = preStu || (state.students[0]&&state.students[0].id) || "";
+    var last = state.settings.lastStu;
+    var sel = preStu || state.currentStudent || (last && stuById(last) ? last : "");
+    var ph = '<option value=""'+(sel===""?" selected":"")+'>选择学生 ▾</option>';
     var opts = state.students.map(function(s){ return '<option value="'+s.id+'"'+(s.id===sel?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("");
+    opts = ph + opts;
     var cl = currentLesson();
     var html = '<h3>写一笔</h3>'+
       (state.students.length?'<div class="field"><label>学生</label><select id="nt-stu">'+opts+'</select></div>'
@@ -484,37 +508,73 @@
     openModal(html);
   }
 
-  function openClassesModal(){
-    var rows = state.classes.map(function(c){
+  // ---- 班级管理整页 ----
+  function showClassPage(){
+    document.getElementById("home").classList.add("hidden");
+    document.getElementById("detail").classList.add("hidden");
+    document.getElementById("classPage").classList.remove("hidden");
+    document.querySelector(".actionbar").classList.add("hidden");
+    renderClassPage();
+  }
+  function renderClassPage(){
+    var box = document.getElementById("classManageList");
+    if(!state.classes.length){ box.innerHTML = '<div class="empty">还没有班级。<br>点右上角「＋新建」建一个；或在「写一笔 / 加学生」时也能直接选班级。</div>'; return; }
+    box.innerHTML = state.classes.map(function(c){
       var n = state.students.filter(function(s){return s.classId===c.id;}).length;
-      return '<div class="cls-row"><div>'+esc(c.name)+(c.term?' <span style="font-size:12px;color:var(--muted)">'+esc(c.term)+'</span>':'')+'<span class="cn">'+n+'人</span></div>'+
-        '<button data-action="add-to-class" data-id="'+c.id+'">加学生</button><button data-action="edit-class" data-id="'+c.id+'">改</button><button data-action="del-class" data-id="'+c.id+'">删</button></div>';
+      return '<div class="cls-manage-row">'+
+        '<div class="cm-info">'+esc(c.name)+(c.term?' <span class="cm-term">'+esc(c.term)+'</span>':'')+'<span class="cm-n">'+n+' 人</span></div>'+
+        '<div class="cls-acts">'+
+          '<button data-action="class-add" data-id="'+c.id+'">＋加学生</button>'+
+          '<button data-action="edit-class" data-id="'+c.id+'">改名</button>'+
+          '<button class="danger" data-action="del-class" data-id="'+c.id+'">删除</button>'+
+        '</div></div>';
     }).join("");
-    var html = '<h3>班级管理</h3>'+
-      (rows||'<div class="pending-empty">还没有班级，下面新建一个。</div>')+
-      '<div class="field" style="margin-top:14px;"><label>新建 / 改名</label><input type="text" id="cl-name" placeholder="班级名，如：高一数学班"></div>'+
-      '<div class="field"><label>学期 / 季节（可不填，用来区分不同阶段）</label><input type="text" id="cl-term" placeholder="如：2026秋"></div>'+
-      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button>'+
-      '<button class="primary" data-action="save-class">新建班级</button></div>';
+  }
+  function openClassNew(){
+    var html = '<h3>新建班级</h3>'+
+      '<div class="field"><label>班级名</label><input type="text" id="cl-name" placeholder="如：高一数学班"></div>'+
+      '<div class="field"><label>学期 / 季节（可不填）</label><input type="text" id="cl-term" placeholder="如：2026秋"></div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="save-class">建好</button></div>';
     openModal(html);
   }
-
-  function openClassAddModal(cid){
+  function openClassAdd(cid){
     var c = state.classes.find(function(x){return x.id===cid;}); if(!c) return;
     var others = state.students.filter(function(s){return s.classId!==cid;});
-    var rows = others.length ? others.map(function(s){
+    var pickRows = others.length ? others.map(function(s){
       return '<label class="chkrow"><input type="checkbox" class="atc" value="'+s.id+'"> '+esc(s.name)+'</label>';
     }).join("") : '<div class="pending-empty">没有可加的学生了（都已在别的班）。</div>';
     var html = '<h3>把学生加入「'+esc(c.name)+'」</h3>'+
-      (others.length?'<div class="pending-empty">勾选要加进这个班的学生：</div>':'')+ rows +
+      '<div class="pending-empty">① 从已有学生里挑，勾选后加入本班：</div>'+ pickRows +
+      (others.length?'<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="save-add-class" data-id="'+cid+'">加入本班</button></div>':'')+
+      '<hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">'+
+      '<div class="pending-empty">② 或当场新建并归入本班：</div>'+
+      '<div class="field"><label>新学生名字</label><input type="text" id="cas-name" placeholder="如：小刚"></div>'+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
-      (others.length?'<button class="primary" data-action="save-add-class" data-id="'+cid+'">加入本班</button>':'')+'</div>';
+      '<button class="primary" data-action="save-new-stu-class" data-id="'+cid+'">新建并加入</button></div>';
+    openModal(html);
+  }
+  function saveNewStuClass(cid){
+    var name = (document.getElementById("cas-name").value||"").trim();
+    if(!name){ alert("填一下新学生名字"); return; }
+    var ns = {id:uid(), name:name, classId:cid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns);
+    state.settings.lastStu = ns.id;
+    save(); closeModal(); renderClassPage();
+  }
+  function openClassDelModal(id){
+    var c = state.classes.find(function(x){return x.id===id;}); if(!c) return;
+    var n = state.students.filter(function(s){return s.classId===id;}).length;
+    var html = '<h3 style="color:var(--alert);">删除班级？</h3>'+
+      '<div class="pending-empty">删除「'+esc(c.name)+'」不会删学生，只是去掉他们的班级归属（变成不分组）。'+(n?('当前 '+n+' 名学生会变为不分组。'):'')+'<br>删错了可在「更多 → 导入备份」里恢复。</div>'+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
+      '<button class="primary" data-action="confirm-del-class" data-id="'+id+'" style="background:var(--alert);color:var(--alert-text);">确认删除</button></div>';
     openModal(html);
   }
   function saveAddClass(cid){
     var boxes = document.querySelectorAll(".atc:checked");
     [].forEach.call(boxes, function(b){ var s=stuById(b.value); if(s){ s.classId=cid; s.classTag=""; stamp(s); } });
-    save(); closeModal(); openClassesModal();
+    save(); closeModal(); renderClassPage();
   }
 
   function openTermModal(){
@@ -555,7 +615,7 @@
 
   function saveNote(){
     var sid, isNew=false, newName="";
-    if(state.students.length){ sid = document.getElementById("nt-stu").value; }
+    if(state.students.length){ sid = document.getElementById("nt-stu").value; if(!sid){ alert("请先选择学生"); return; } }
     else { newName = document.getElementById("nt-newname").value.trim(); if(!newName){ alert("填一下学生名字"); return; } isNew=true; }
     var type = pickedType;
     var date = document.getElementById("nt-date").value || today();
@@ -566,6 +626,7 @@
     stamp(ent);
     if(type==="请假"||type==="补课") ent.status="待补";
     state.entries.push(ent);
+    state.settings.lastStu = sid;
     save(); closeModal(); pickedStu=[]; pickedType="上课";
     if(state.currentStudent===sid) renderDetail(); else render();
   }
@@ -612,14 +673,13 @@
     var term = document.getElementById("cl-term").value.trim();
     if(!name){ alert("填一下班级名"); return; }
     var c = {id:uid(), name:name, term:term}; stamp(c); state.classes.push(c);
-    save(); openClassesModal();
+    save(); closeModal(); renderClassPage();
   }
   function delClass(id){
-    if(!confirm("删除班级不会删学生，只是去掉他们的班级归属，确定？")) return;
     state.tomb.classes.push(id);
     state.classes = state.classes.filter(function(c){return c.id!==id;});
     state.students.forEach(function(s){ if(s.classId===id){ s.classId=""; stamp(s); } });
-    save(); openClassesModal();
+    save(); closeModal(); renderClassPage();
   }
 
   function markDone(id){
@@ -638,7 +698,7 @@
   }
 
   function openExportModal(){
-    var data = { students:state.students, entries:state.entries, classes:state.classes, settings:state.settings, _app:"学生记录" };
+    var data = { students:state.students, entries:state.entries, classes:state.classes, tomb:state.tomb, settings:state.settings, _app:"学生记录" };
     var json = JSON.stringify(data,null,2);
     var html = '<h3>导出备份</h3>'+
       '<div class="field"><label>把下面的内容复制，存到微信文件传输助手 / 备忘录（换手机或链接失效时靠它恢复）</label>'+
@@ -682,6 +742,7 @@
       if(!confirm("导入会覆盖当前所有数据，确定继续？")) return;
       state.students = d.students; state.entries = d.entries;
       state.classes = Array.isArray(d.classes)?d.classes:[];
+      state.tomb = (d.tomb && d.tomb.students) ? d.tomb : {students:[],entries:[],classes:[]};
       (state.students||[]).forEach(stamp); (state.entries||[]).forEach(stamp); (state.classes||[]).forEach(stamp);
       if(d.settings) state.settings = d.settings;
       document.body.setAttribute("data-theme", state.settings.theme||"navy");
@@ -720,6 +781,21 @@
   }
   function syncNow(){ initSync(); }
 
+  // ---- 更多菜单（二级收纳）----
+  function openMoreMenu(){
+    var items = [
+      {a:"sync", t:"同步", s:"多端数据"},
+      {a:"switch-theme", t:"换主题", s:"商务蓝 / 石墨灰 / 墨绿"},
+      {a:"open-term", t:"学期设置", s:"估算第几节"},
+      {a:"export", t:"导出备份", s:"复制文本存微信"},
+      {a:"import", t:"导入备份", s:"粘贴 / 选文件恢复"}
+    ];
+    var html = '<h3>更多</h3>' + items.map(function(it){
+      return '<button class="more-item" data-action="'+it.a+'">'+it.t+'<span class="sub">'+it.s+'</span></button>';
+    }).join("") + '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button></div>';
+    openModal(html);
+  }
+
   // ---- delegation ----
   document.addEventListener("click", function(ev){
     var el = ev.target.closest("[data-action]"); if(!el) return;
@@ -729,6 +805,7 @@
       case "open-term": openTermModal(); break;
       case "export": openExportModal(); break;
       case "import": openImportModal(); break;
+      case "open-more": openMoreMenu(); break;
       case "open-lesson": pickedStu=[]; openLessonModal(); break;
       case "open-note": pickedType="上课"; openNoteModal(); break;
       case "note-for": pickedType="上课"; openNoteModal(state.currentStudent); break;
@@ -736,17 +813,20 @@
       case "back-home": showHome(); break;
       case "edit-stu": ev.stopPropagation(); openStuModal(id); break;
       case "add-stu": openStuModal(null); break;
-      case "add-to-class": openClassAddModal(id); break;
+      case "class-add": openClassAdd(id); break;
       case "save-add-class": saveAddClass(id); break;
+      case "save-new-stu-class": saveNewStuClass(id); break;
       case "edit-entry": openEditModal(id); break;
       case "del-entry": if(confirm("删掉这条记录？")){ state.tomb.entries.push(id); state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
       case "mark-done": markDone(id); break;
       case "filter": state.filter = el.getAttribute("data-type"); renderDetail(); break;
       case "filter-class": state.activeClass = id || null; renderClasses(); renderStudents(); break;
-      case "manage-classes": openClassesModal(); break;
+      case "manage-classes": showClassPage(); break;
+      case "new-class": openClassNew(); break;
       case "save-class": saveClass(); break;
       case "edit-class": openClassEdit(id); break;
-      case "del-class": delClass(id); break;
+      case "del-class": openClassDelModal(id); break;
+      case "confirm-del-class": delClass(id); break;
       case "save-term": saveTerm(); break;
       case "update-class": updateClass(id); break;
       case "close-modal": closeModal(); pickedStu=[]; pickedType="上课"; break;
@@ -793,7 +873,7 @@
     var name = document.getElementById("cl-name").value.trim();
     if(!name){ alert("填一下班级名"); return; }
     c.name = name; c.term = document.getElementById("cl-term").value.trim(); stamp(c);
-    save(); openClassesModal();
+    save(); closeModal(); renderClassPage();
   }
   function saveTerm(){
     state.settings.term = { start:document.getElementById("tm-start").value, perWeek:parseInt(document.getElementById("tm-per").value,10)||1 };
