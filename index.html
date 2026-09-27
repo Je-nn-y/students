@@ -24,6 +24,7 @@
   .title{ font-size:18px; font-weight:600; margin:2px 0 0; }
   .spacer{ flex:1; }
   .iconbtn{ border:0; background:var(--card); color:var(--text); border-radius:10px; padding:8px 10px; font-size:13px; box-shadow:0 1px 0 var(--line); cursor:pointer; }
+  .greet{ font-size:19px; font-weight:600; color:var(--text); margin-bottom:2px; }
   .iconbtn:active{ transform:scale(.97); }
 
   section{ margin-top:18px; }
@@ -80,7 +81,9 @@
   .edate{ font-size:12px; color:var(--muted); margin-left:auto; white-space:nowrap; }
   .etxt{ font-size:14px; margin:7px 0 0; white-space:pre-wrap; word-break:break-word; }
   .eacts{ display:flex; gap:14px; margin-top:8px; }
+  .eacts{ display:flex; align-items:center; gap:14px; margin-top:6px; }
   .eacts button{ border:0; background:transparent; color:var(--muted); font-size:13px; padding:0; cursor:pointer; }
+  .eacts .sp{ flex:1; }
 
   .empty{ text-align:center; color:var(--muted); padding:30px 10px; font-size:14px; }
 
@@ -127,7 +130,6 @@
     <div class="topbar">
       <div>
         <div class="greet" id="greet"></div>
-        <div class="title">学生记录</div>
       </div>
       <div class="spacer"></div>
       <span id="syncStatus" style="font-size:11px;color:var(--muted);margin-right:2px;"></span>
@@ -164,6 +166,7 @@
     <div class="chips" id="chips"></div>
     <div id="timeline"></div>
     <div style="text-align:center; margin-top:6px;">
+      <button class="iconbtn" data-action="copy-all">复制全部</button>
       <button class="iconbtn" data-action="note-for" id="addForBtn" style="background:var(--card);">给 TA 写一笔</button>
     </div>
   </section>
@@ -199,7 +202,7 @@
   var THEME_NAME = {navy:"商务蓝", slate:"石墨灰", teal:"墨绿"};
 
   var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes", LS_TOMB = "sr_tomb";
-  var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, settings:{theme:"navy", lastStu:"", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
+  var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, trash:[], settings:{theme:"navy", lastStu:"", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
 
   function load(){
     try{ state.students = JSON.parse(localStorage.getItem(LS_STU)) || []; }catch(e){ state.students = []; }
@@ -324,7 +327,7 @@
 
   // ---- render ----
   function render(){
-    document.getElementById("greet").textContent = greet();
+    document.getElementById("greet").textContent = greet()+" Jenny";
     renderPending();
     renderClasses();
     renderStudents();
@@ -408,7 +411,9 @@
         '<span class="badge" style="background:'+colorOf(e.type)+'">'+e.type+'</span>'+
         '<span class="edate">'+esc(e.date||"")+les+esc(st)+'</span></div>'+
         (e.text?'<div class="etxt">'+esc(e.text)+'</div>':'')+
-        '<div class="eacts"><button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+        '<div class="eacts"><button data-action="copy-entry" data-id="'+e.id+'">复制</button>'+
+        '<span class="sp"></span>'+
+        '<button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
         '<button data-action="del-entry" data-id="'+e.id+'">删</button></div></div>';
     }).join("");
   }
@@ -465,6 +470,8 @@
     var ph = '<option value=""'+(sel===""?" selected":"")+'>选择学生 ▾</option>';
     var opts = state.students.map(function(s){ return '<option value="'+s.id+'"'+(s.id===sel?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("");
     opts = ph + opts;
+    var leaveOpts = '<option value="">不关联</option>';
+    if(sel){ state.entries.filter(function(e){ return e.studentId===sel && e.type==="请假" && e.status!=="已补"; }).forEach(function(e){ leaveOpts += '<option value="'+e.id+'">'+esc(e.date||"")+(e.text?(" "+esc(e.text)):"")+'</option>'; }); }
     var cl = currentLesson();
     var html = '<h3>写一笔</h3>'+
       (state.students.length?'<div class="field"><label>学生</label><select id="nt-stu">'+opts+'</select></div>'
@@ -473,6 +480,7 @@
       '<div class="field"><label>类型</label><div id="nt-type">'+typePicker("上课")+'</div></div>'+
       '<div class="field"><label>日期</label><input type="date" id="nt-date" value="'+today()+'"></div>'+
       '<div class="field"><label>第几节（可不填）</label><input type="number" id="nt-lesson" value="'+(cl||"")+'" placeholder="自动估算"></div>'+
+      '<div class="field"><label>补课关联请假（选「补课」时有效，选了那条请假自动已补）</label><select id="nt-ref">'+leaveOpts+'</select></div>'+
       '<div class="field"><label>写一句</label><textarea id="nt-text" placeholder="一两句话就够"></textarea></div>'+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
       '<button class="primary" data-action="save-note">保存</button></div>';
@@ -483,8 +491,11 @@
     var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
     pickedType = e.type;
     var isLC = (e.type==="请假"||e.type==="补课");
+    var leaveOpts = '<option value="">不关联</option>';
+    state.entries.filter(function(x){ return x.studentId===e.studentId && x.type==="请假" && x.status!=="已补" && x.id!==id; }).forEach(function(x){ leaveOpts += '<option value="'+x.id+'">'+esc(x.date||"")+(x.text?(" "+esc(x.text)):"")+'</option>'; });
     var mk = isLC ? '<div class="field"><label>补课日期（可不填）</label><input type="date" id="ed-mk" value="'+(e.makeUpDate||"")+'"></div>'+
       '<div class="field"><label>补课第几节（可不填）</label><input type="number" id="ed-mklesson" value="'+(e.lesson||"")+'" placeholder="如：6"></div>'+
+      '<div class="field"><label>补课关联请假（可选）</label><select id="ed-ref">'+leaveOpts+'</select></div>'+
       '<div class="field"><label><input type="checkbox" id="ed-done"'+(e.status==="已补"?" checked":"")+'> 已补 / 已安排</label></div>' : '';
     var html = '<h3>改一笔</h3>'+
       '<div class="field"><label>类型</label><div id="ed-type">'+typePicker(e.type)+'</div></div>'+
@@ -499,12 +510,15 @@
 
   function openStuModal(id){
     var s = id?stuById(id):null;
+    var nameField = s
+      ? '<div class="field"><label>名字</label><input type="text" id="st-name" value="'+esc(s.name)+'" placeholder="如：小明"></div>'
+      : '<div class="field"><label>名字（每行一个，可批量；也支持逗号、空格分隔）</label><textarea id="st-names" rows="4" style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);resize:vertical;" placeholder="小刚\n小红\n小明（一行一个）"></textarea></div>';
     var html = '<h3>'+(s?'改学生':'加学生')+'</h3>'+
-      '<div class="field"><label>名字</label><input type="text" id="st-name" value="'+esc(s?s.name:"")+'" placeholder="如：小明"></div>'+
+      nameField+
       '<div class="field"><label>班级</label><select id="st-class">'+classOptions(s?s.classId:"")+'</select></div>'+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
       (s?'<button class="ghost" data-action="del-stu" data-id="'+id+'">删除</button>':'')+
-      '<button class="primary" data-action="save-stu" data-id="'+(id||"")+'">保存</button></div>';
+      '<button class="primary" data-action="save-stu" data-id="'+(id||"")+'">'+(s?'保存':'全部加入')+'</button></div>';
     openModal(html);
   }
 
@@ -636,6 +650,8 @@
     stamp(ent);
     if(type==="请假"||type==="补课") ent.status="待补";
     state.entries.push(ent);
+    var ref = document.getElementById("nt-ref") ? document.getElementById("nt-ref").value : "";
+    if(type==="补课" && ref){ var le=state.entries.find(function(x){return x.id===ref;}); if(le) le.status="已补"; }
     state.settings.lastStu = sid;
     save(); closeModal(); pickedStu=[]; pickedType="上课";
     if(state.currentStudent===sid) renderDetail(); else render();
@@ -657,15 +673,30 @@
       e.lesson = ev ? parseInt(ev,10) : null;
     }
     e.text = document.getElementById("ed-text").value.trim();
+    var ref = document.getElementById("ed-ref") ? document.getElementById("ed-ref").value : "";
+    if(e.type==="补课" && ref){ var le=state.entries.find(function(x){return x.id===ref;}); if(le) le.status="已补"; }
     save(); closeModal(); pickedType="上课"; render();
   }
 
   function saveStu(id){
-    var name = document.getElementById("st-name").value.trim();
     var cid = document.getElementById("st-class").value;
-    if(!name){ alert("名字不能为空"); return; }
-    if(id){ var s=stuById(id); s.name=name; s.classId=cid; s.classTag=""; stamp(s); }
-    else { var ns={id:uid(), name:name, classId:cid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); }
+    if(id){
+      var name = document.getElementById("st-name").value.trim();
+      if(!name){ alert("名字不能为空"); return; }
+      var s=stuById(id); s.name=name; s.classId=cid; s.classTag=""; stamp(s);
+    } else {
+      var raw = document.getElementById("st-names").value;
+      var names = raw.split(/[\n,，、\s]+/).map(function(x){return x.trim();}).filter(Boolean);
+      names = Array.from(new Set(names));
+      if(!names.length){ alert("填一下学生名字（每行一个，或逗号分隔）"); return; }
+      var added=0;
+      names.forEach(function(name){
+        var exist = state.students.some(function(x){ return x.name===name && x.classId===cid; });
+        if(exist) return;
+        var ns={id:uid(), name:name, classId:cid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); added++;
+      });
+      if(added) state.settings.lastStu = state.students[state.students.length-1].id;
+    }
     save(); closeModal(); render();
   }
 
@@ -726,6 +757,35 @@
     if(!ok){ try{ ok = document.execCommand("copy"); }catch(e){} }
     alert(ok ? "已复制，去微信文件传输助手粘贴保存吧" : "复制失败，请手动长按全选复制");
   }
+  // ---- 复制 + 轻提示 ----
+  function toast(msg){
+    var t=document.getElementById("toast");
+    if(!t){ t=document.createElement("div"); t.id="toast"; t.style.cssText="position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:rgba(0,0,0,.82);color:#fff;padding:9px 15px;border-radius:10px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80%;text-align:center;"; document.body.appendChild(t); }
+    t.textContent=msg; t.style.opacity="1"; clearTimeout(t._tm); t._tm=setTimeout(function(){ t.style.opacity="0"; }, 1500);
+  }
+  function copyText(txt){
+    var ok=false;
+    if(navigator.clipboard && navigator.clipboard.writeText){ try{ navigator.clipboard.writeText(txt); ok=true; }catch(e){} }
+    if(!ok){ try{ var ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.focus(); ta.select(); ok=document.execCommand("copy"); document.body.removeChild(ta); }catch(e){} }
+    toast(ok?"已复制":("复制失败，请手动长按复制"));
+  }
+  function entryText(e){
+    var s=stuName(e.studentId);
+    var st=(e.type==="请假"||e.type==="补课")?(" · "+(e.status==="已补"?"已补":(e.makeUpDate?("约 "+e.makeUpDate):"待补"))):"";
+    var les=e.lesson?(" 第"+e.lesson+"节"):"";
+    return "【"+s+"】"+e.type+st+" "+(e.date||"")+les+"："+(e.text||"");
+  }
+  function copyEntry(id){
+    var e=state.entries.find(function(x){return x.id===id;}); if(!e) return;
+    copyText(entryText(e));
+  }
+  function copyAll(){
+    if(!state.currentStudent) return;
+    var list=state.entries.filter(function(e){return e.studentId===state.currentStudent;});
+    if(!list.length){ toast("还没有记录"); return; }
+    copyText("【"+stuName(state.currentStudent)+"】共 "+list.length+" 条\n"+list.map(entryText).join("\n"));
+  }
+
   function openImportModal(){
     var html = '<h3>导入备份</h3>'+
       '<div class="field"><label>方式一：粘贴之前复制的备份文本</label><textarea id="imp-text" placeholder="把备份文本粘贴到这里" style="min-height:120px;"></textarea></div>'+
@@ -759,6 +819,12 @@
       save(); closeModal(); showHome();
     }catch(e){ alert("读不懂这段内容"); }
   }
+
+  window.addEventListener("popstate", function(){
+    var detailOn = !document.getElementById("detail").classList.contains("hidden");
+    var classOn = !document.getElementById("classPage").classList.contains("hidden");
+    if(detailOn || classOn){ showHome(); history.pushState({sub:1},""); }
+  });
 
   // ---- sync UI ----
   function openSyncModal(){
@@ -798,12 +864,31 @@
       {a:"switch-theme", t:"换主题", s:"商务蓝 / 石墨灰 / 墨绿"},
       {a:"open-term", t:"学期设置", s:"估算第几节"},
       {a:"export", t:"导出备份", s:"复制文本存微信"},
-      {a:"import", t:"导入备份", s:"粘贴 / 选文件恢复"}
+      {a:"import", t:"导入备份", s:"粘贴 / 选文件恢复"},
+      {a:"open-trash", t:"回收站", s:"找回刚删的记录"}
     ];
     var html = '<h3>更多</h3>' + items.map(function(it){
       return '<button class="more-item" data-action="'+it.a+'">'+it.t+'<span class="sub">'+it.s+'</span></button>';
     }).join("") + '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button></div>';
     openModal(html);
+  }
+
+  // ---- 回收站 ----
+  function openTrash(){
+    if(!state.trash.length){ openModal('<h3>回收站</h3><div class="pending-empty">还没有删掉的东西。删掉的记录会在这里留 10 条，可找回。</div><div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button></div>'); return; }
+    var rows = state.trash.slice().reverse().map(function(e){
+      return '<div class="cls-row"><div>'+esc(stuName(e.studentId))+' · '+esc(e.type)+(e.date?(' '+esc(e.date)):'')+(e.text?('：'+esc(e.text)):'')+'</div>'+
+        '<button data-action="restore-trash" data-id="'+e.id+'">恢复</button></div>';
+    }).join("");
+    openModal('<h3>回收站（最近 '+state.trash.length+' 条）</h3><div class="pending-empty">点「恢复」放回原处。最多留 10 条。</div>'+rows+'<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button></div>');
+  }
+  function restoreTrash(id){
+    var i = state.trash.findIndex(function(x){return x.id===id;}); if(i<0) return;
+    var e = state.trash[i]; delete e.deletedAt;
+    state.entries.push(e);
+    var ti = state.tomb.entries.indexOf(id); if(ti>=0) state.tomb.entries.splice(ti,1);
+    state.trash.splice(i,1);
+    save(); closeModal(); render();
   }
 
   // ---- delegation ----
@@ -819,7 +904,7 @@
       case "open-lesson": pickedStu=[]; openLessonModal(); break;
       case "open-note": pickedType="上课"; openNoteModal(); break;
       case "note-for": pickedType="上课"; openNoteModal(state.currentStudent); break;
-      case "open-detail": state.currentStudent=id; state.filter="全部"; renderDetail(); break;
+      case "open-detail": state.currentStudent=id; state.filter="全部"; renderDetail(); history.pushState({sub:1},""); break;
       case "back-home": showHome(); break;
       case "edit-stu": ev.stopPropagation(); openStuModal(id); break;
       case "add-stu": openStuModal(null); break;
@@ -827,11 +912,11 @@
       case "save-add-class": saveAddClass(id); break;
       case "save-new-stu-class": saveNewStuClass(id); break;
       case "edit-entry": openEditModal(id); break;
-      case "del-entry": if(confirm("删掉这条记录？")){ state.tomb.entries.push(id); state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
+      case "del-entry": if(confirm("删掉这条记录？")){ var de=state.entries.find(function(x){return x.id===id;}); if(de){ state.trash.push(Object.assign({},de,{deletedAt:Date.now()})); if(state.trash.length>10) state.trash.shift(); } state.tomb.entries.push(id); state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
       case "mark-done": markDone(id); break;
       case "filter": state.filter = el.getAttribute("data-type"); renderDetail(); break;
       case "filter-class": state.activeClass = id || null; renderClasses(); renderStudents(); break;
-      case "manage-classes": showClassPage(); break;
+      case "manage-classes": showClassPage(); history.pushState({sub:1},""); break;
       case "new-class": openClassNew(); break;
       case "save-class": saveClass(); break;
       case "edit-class": openClassEdit(id); break;
@@ -840,6 +925,10 @@
       case "save-term": saveTerm(); break;
       case "update-class": updateClass(id); break;
       case "close-modal": closeModal(); pickedStu=[]; pickedType="上课"; break;
+      case "open-trash": openTrash(); break;
+      case "restore-trash": restoreTrash(id); break;
+      case "copy-entry": copyEntry(id); break;
+      case "copy-all": copyAll(); break;
       case "save-lesson": saveLesson(); break;
       case "save-note": saveNote(); break;
       case "save-edit": saveEdit(id); break;
