@@ -549,18 +549,28 @@
       (others.length?'<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
       '<button class="primary" data-action="save-add-class" data-id="'+cid+'">加入本班</button></div>':'')+
       '<hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">'+
-      '<div class="pending-empty">② 或当场新建并归入本班：</div>'+
-      '<div class="field"><label>新学生名字</label><input type="text" id="cas-name" placeholder="如：小刚"></div>'+
+      '<div class="pending-empty">② 或当场批量新建并归入本班：</div>'+
+      '<div class="field"><label>新学生名字（每行一个，可一次建多个；也支持逗号、空格分隔）</label><textarea id="cas-name" rows="4" style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);resize:vertical;" placeholder="小刚\n小红\n小明（一行一个）"></textarea></div>'+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
-      '<button class="primary" data-action="save-new-stu-class" data-id="'+cid+'">新建并加入</button></div>';
+      '<button class="primary" data-action="save-new-stu-class" data-id="'+cid+'">全部新建并加入</button></div>';
     openModal(html);
   }
   function saveNewStuClass(cid){
-    var name = (document.getElementById("cas-name").value||"").trim();
-    if(!name){ alert("填一下新学生名字"); return; }
-    var ns = {id:uid(), name:name, classId:cid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns);
-    state.settings.lastStu = ns.id;
+    var raw = (document.getElementById("cas-name").value||"");
+    var names = raw.split(/[\n,，、\s]+/).map(function(x){return x.trim();}).filter(Boolean);
+    names = Array.from(new Set(names));
+    if(!names.length){ alert("填一下新学生名字（每行一个，或逗号分隔）"); return; }
+    var c = state.classes.find(function(x){return x.id===cid;});
+    var firstId="", added=0, skipped=0;
+    names.forEach(function(name){
+      var exist = state.students.some(function(s){ return s.name===name && s.classId===cid; });
+      if(exist){ skipped++; return; }
+      var ns = {id:uid(), name:name, classId:cid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns);
+      if(!firstId) firstId=ns.id; added++;
+    });
+    if(added) state.settings.lastStu = firstId;
     save(); closeModal(); renderClassPage();
+    if(added) alert("已新建 "+added+" 名学生并归入「"+(c?c.name:"")+"」"+(skipped?("（跳过 "+skipped+" 个已存在）"):""));
   }
   function openClassDelModal(id){
     var c = state.classes.find(function(x){return x.id===id;}); if(!c) return;
