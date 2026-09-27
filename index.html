@@ -84,6 +84,12 @@
   .eacts{ display:flex; align-items:center; gap:14px; margin-top:6px; }
   .eacts button{ border:0; background:transparent; color:var(--muted); font-size:13px; padding:0; cursor:pointer; }
   .eacts .sp{ flex:1; }
+  .entry .grow{ display:flex; align-items:flex-start; gap:8px; padding:5px 0; border-top:1px dashed var(--line); }
+  .entry .grow:first-child{ border-top:0; }
+  .entry .gtxt{ flex:1; line-height:1.5; }
+  .entry .gst{ color:var(--muted); font-size:12px; margin-left:4px; }
+  .entry .gacts{ display:flex; gap:10px; flex-shrink:0; }
+  .entry .gacts .mini{ border:0; background:transparent; color:var(--muted); font-size:12px; padding:0; cursor:pointer; }
 
   .empty{ text-align:center; color:var(--muted); padding:30px 10px; font-size:14px; }
 
@@ -388,6 +394,16 @@
     }).join("");
   }
 
+  function groupEntries(list){
+    var map={}, order=[];
+    list.forEach(function(e){
+      var key=(e.date||"")+"|"+(e.lesson?String(e.lesson):"");
+      if(!map[key]){ map[key]={key:key, date:e.date||"", lesson:e.lesson?String(e.lesson):"", items:[]}; order.push(key); }
+      map[key].items.push(e);
+    });
+    return order.map(function(k){ return map[k]; });
+  }
+
   function renderDetail(){
     var s = stuById(state.currentStudent); if(!s) return;
     document.getElementById("detail").classList.remove("hidden");
@@ -403,18 +419,19 @@
     ents.sort(function(a,b){ return (b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0); });
     var box = document.getElementById("timeline");
     if(!ents.length){ box.innerHTML = '<div class="empty">这里还空空的，写一笔吧。</div>'; return; }
-    box.innerHTML = ents.map(function(e){
-      var st = (e.type==="请假"||e.type==="补课") ? (' · '+(e.status==="已补"?"已补":(e.makeUpDate?("约 "+e.makeUpDate):"待补"))) : '';
-      var les = e.lesson ? (' 第'+e.lesson+'节') : '';
+        box.innerHTML = groupEntries(ents).map(function(g){
+      var head = g.date + (g.lesson? (' 第'+g.lesson+'节') : '');
+      var body = g.items.map(function(e){
+        var st = (e.type==="请假"||e.type==="补课") ? (' · '+(e.status==="已补"?"已补":(e.makeUpDate?("约 "+e.makeUpDate):"待补"))) : '';
+        return '<div class="grow"><span class="badge" style="background:'+colorOf(e.type)+'">'+e.type+'</span>'+
+          '<span class="gtxt">'+esc(e.text||"")+(e.text&&st?'<span class="gst">'+esc(st)+'</span>':'')+'</span>'+
+          '<span class="gacts"><button class="mini" data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+          '<button class="mini" data-action="del-entry" data-id="'+e.id+'">删</button></span></div>';
+      }).join("");
       return '<div class="entry">'+
-        '<div class="erow"><span class="dot" style="background:'+colorOf(e.type)+'"></span>'+
-        '<span class="badge" style="background:'+colorOf(e.type)+'">'+e.type+'</span>'+
-        '<span class="edate">'+esc(e.date||"")+les+esc(st)+'</span></div>'+
-        (e.text?'<div class="etxt">'+esc(e.text)+'</div>':'')+
-        '<div class="eacts"><button data-action="copy-entry" data-id="'+e.id+'">复制</button>'+
-        '<span class="sp"></span>'+
-        '<button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
-        '<button data-action="del-entry" data-id="'+e.id+'">删</button></div></div>';
+        '<div class="erow"><span class="edate">'+esc(head)+'</span></div>'+
+        '<div class="etxt">'+body+'</div>'+
+        '<div class="eacts"><button data-action="copy-group" data-g="'+g.key+'">复制本组</button></div></div>';
     }).join("");
   }
 
@@ -779,6 +796,14 @@
     var e=state.entries.find(function(x){return x.id===id;}); if(!e) return;
     copyText(entryText(e));
   }
+  function copyGroup(key){
+    var p = key.split("|");
+    var date = p[0], lesson = p[1]||"";
+    var items = state.entries.filter(function(e){ return e.studentId===state.currentStudent && (e.date||"")===date && (e.lesson?String(e.lesson):"")===lesson; });
+    if(!items.length){ toast("没有可复制的内容"); return; }
+    var txt = items.map(function(e){ return (e.type&&e.type!=="上课"?e.type+"·":"")+(e.text||""); }).join("\n");
+    copyText("【"+stuName(state.currentStudent)+"】"+date+(lesson?(" 第"+lesson+"节"):"")+"\n"+txt);
+  }
   function copyAll(){
     if(!state.currentStudent) return;
     var list=state.entries.filter(function(e){return e.studentId===state.currentStudent;});
@@ -894,7 +919,7 @@
   // ---- delegation ----
   document.addEventListener("click", function(ev){
     var el = ev.target.closest("[data-action]"); if(!el) return;
-    var a = el.getAttribute("data-action"); var id = el.getAttribute("data-id");
+    var a = el.getAttribute("data-action"); var id = el.getAttribute("data-id"); var g = el.getAttribute("data-g");
     switch(a){
       case "switch-theme": switchTheme(); break;
       case "open-term": openTermModal(); break;
@@ -929,6 +954,7 @@
       case "restore-trash": restoreTrash(id); break;
       case "copy-entry": copyEntry(id); break;
       case "copy-all": copyAll(); break;
+      case "copy-group": copyGroup(g); break;
       case "save-lesson": saveLesson(); break;
       case "save-note": saveNote(); break;
       case "save-edit": saveEdit(id); break;
