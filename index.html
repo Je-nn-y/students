@@ -7,7 +7,7 @@
 <style>
   :root{
     --radius:12px; --radius-sm:8px;
-    --t-class:#2563EB; --t-parent:#7C3AED; --t-leave:#D97706; --t-makeup:#0E7490; --t-note:#64748B;
+    --t-class:#2563EB; --t-parent:#7C3AED; --t-leave:#E11D48; --t-makeup:#0D9488; --t-note:#64748B;
   }
   body[data-theme="navy"]{ --bg:#EEF1F5; --card:#FFFFFF; --accent:#2C5DA8; --accent-strong:#FFFFFF; --text:#1F2A37; --muted:#6B7280; --line:rgba(15,23,42,.10); --alert:#C2410C; --alert-text:#FFFFFF; --chip:#E5EAF2; }
   body[data-theme="slate"]{ --bg:#F1F3F5; --card:#FFFFFF; --accent:#3F4A5A; --accent-strong:#FFFFFF; --text:#1F2933; --muted:#6B7280; --line:rgba(15,23,42,.10); --alert:#B91C1C; --alert-text:#FFFFFF; --chip:#E7EAEE; }
@@ -128,6 +128,34 @@
   .cls-acts .danger{ background:transparent; color:var(--alert); border:1px solid var(--alert); margin-left:auto; }
   .more-item{ width:100%; text-align:left; border:0; background:var(--bg); color:var(--text); border-radius:12px; padding:15px 16px; font-size:15px; margin-bottom:8px; cursor:pointer; box-shadow:0 1px 0 var(--line); }
   .more-item .sub{ font-size:12px; color:var(--muted); margin-left:6px; }
+
+  /* 日历（可收起） */
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-top:4px; }
+  .cal-dow{ text-align:center; font-size:11px; color:var(--muted); padding:2px 0; }
+  .cal-cell{ position:relative; aspect-ratio:1/1; border-radius:8px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--text); }
+  .cal-cell.muted{ color:var(--muted); background:transparent; }
+  .cal-cell.today{ outline:2px solid var(--accent); }
+  .cal-cell .dots{ position:absolute; bottom:4px; left:0; right:0; display:flex; justify-content:center; gap:3px; }
+  .cal-cell .dotl{ width:6px; height:6px; border-radius:50%; background:var(--t-leave); }
+  .cal-cell .dotm{ width:6px; height:6px; border-radius:50%; background:var(--t-makeup); }
+  .cal-nav{ display:flex; align-items:center; gap:8px; margin:6px 0 2px; }
+  .cal-nav .mlabel{ font-weight:600; font-size:14px; margin:0 auto; }
+
+  /* 紧凑待补课 */
+  .prow{ display:flex; align-items:center; gap:8px; background:var(--card); border-radius:10px; padding:9px 12px; margin-bottom:7px; box-shadow:0 1px 0 var(--line); }
+  .prow .pdot{ width:8px; height:8px; border-radius:50%; background:var(--t-leave); flex:none; }
+  .prow .pwho{ font-weight:600; }
+  .prow .pdate{ font-size:12px; color:var(--muted); }
+  .prow .pdo{ margin-left:auto; border:0; background:var(--chip); color:var(--text); border-radius:8px; padding:5px 11px; font-size:12px; cursor:pointer; }
+
+  /* 详情页 请假/补课 区块 */
+  .lm-sec{ margin-bottom:4px; }
+  .lm-h{ font-size:13px; font-weight:600; color:var(--muted); margin:12px 0 6px; }
+  .lm-row{ display:flex; align-items:center; gap:8px; background:var(--card); border-radius:10px; padding:9px 12px; margin-bottom:7px; box-shadow:0 1px 0 var(--line); }
+  .lm-row .lm-badge{ font-size:11px; font-weight:600; padding:2px 7px; border-radius:7px; color:#fff; flex:none; }
+  .lm-row .lm-txt{ flex:1; min-width:0; font-size:13px; line-height:1.45; }
+  .lm-row .lm-acts{ display:flex; gap:9px; flex:none; }
+  .lm-row .lm-acts button{ border:0; background:transparent; color:var(--muted); font-size:12px; padding:0; cursor:pointer; }
 </style>
 </head>
 <body data-theme="navy">
@@ -144,6 +172,12 @@
   </header>
 
   <main id="home">
+    <section id="calSec">
+      <div class="sec-head"><h2>日历</h2><span class="sub" id="calSummary"></span>
+        <button class="iconbtn" data-action="toggle-cal" id="calToggle">展开</button></div>
+      <div id="calBox" class="hidden"></div>
+    </section>
+
     <section id="pendingSec">
       <div class="sec-head"><h2>待补课</h2><span class="sub" id="pendingCount"></span></div>
       <div id="pendingList"></div>
@@ -170,6 +204,7 @@
       <button class="iconbtn" id="editStuBtn" data-action="edit-stu">改</button>
     </div>
     <div class="chips" id="chips"></div>
+    <div id="lmBlock"></div>
     <div id="timeline"></div>
     <div style="text-align:center; margin-top:6px;">
       <button class="iconbtn" data-action="copy-all">复制全部</button>
@@ -213,6 +248,7 @@
   function load(){
     try{ state.students = JSON.parse(localStorage.getItem(LS_STU)) || []; }catch(e){ state.students = []; }
     try{ state.entries = JSON.parse(localStorage.getItem(LS_ENT)) || []; }catch(e){ state.entries = []; }
+    state.entries.forEach(function(e){ if(e.type==="补课" && !e.status) e.status="已补"; });
     try{ state.classes = JSON.parse(localStorage.getItem(LS_CLS)) || []; }catch(e){ state.classes = []; }
     try{ var s = JSON.parse(localStorage.getItem(LS_SET)); if(s) state.settings = s; }catch(e){}
     if(!state.settings) state.settings = {theme:"navy"};
@@ -325,7 +361,7 @@
 
   // ---- derived ----
   function pendingList(){
-    return state.entries.filter(function(e){ return (e.type==="请假"||e.type==="补课") && e.status!=="已补"; })
+    return state.entries.filter(function(e){ return e.type==="请假" && e.status!=="已补"; })
       .sort(function(a,b){ return (b.date||"").localeCompare(a.date||""); });
   }
   function stuName(id){ var s=state.students.find(function(x){return x.id===id;}); return s?s.name:"(已删)"; }
@@ -334,6 +370,7 @@
   // ---- render ----
   function render(){
     document.getElementById("greet").textContent = greet()+" Jenny";
+    renderCalendar();
     renderPending();
     renderClasses();
     renderStudents();
@@ -342,21 +379,16 @@
 
   function renderPending(){
     var list = pendingList();
-    document.getElementById("pendingCount").textContent = list.length ? ("共 "+list.length+" 条") : "";
+    document.getElementById("pendingCount").textContent = list.length ? (list.length+" 人待补") : "";
     var box = document.getElementById("pendingList");
     if(!list.length){ box.innerHTML = '<div class="pending-empty">暂时没有需要补课的同学。</div>'; return; }
     box.innerHTML = list.map(function(e){
-      var isLeave = e.type==="请假";
-      var dateInput = isLeave ? '<input type="date" data-mk="'+e.id+'" value="'+(e.makeUpDate||"")+'" title="补课日期">' : '';
       var les = e.lesson ? (' 第'+e.lesson+'节') : '';
-      return '<div class="pend">'+
-        '<div class="row1"><span class="who">'+esc(stuName(e.studentId))+'</span>'+
-        '<span class="badge" style="background:'+colorOf(e.type)+'">'+e.type+'</span>'+
-        '<span class="date">'+esc(e.date||"")+les+'</span></div>'+
-        (e.text?'<div class="txt">'+esc(e.text)+'</div>':'')+
-        '<div class="acts">'+dateInput+
-        '<button class="done-btn" data-action="mark-done" data-id="'+e.id+'">标记已补</button></div>'+
-      '</div>';
+      return '<div class="prow">'+
+        '<span class="pdot"></span>'+
+        '<span class="pwho">'+esc(stuName(e.studentId))+'</span>'+
+        '<span class="pdate">'+esc(fmtDate(e.date||""))+les+'</span>'+
+        '<button class="pdo" data-action="mark-done" data-id="'+e.id+'">已补</button></div>';
     }).join("");
   }
 
@@ -366,7 +398,8 @@
     var cards = '<div class="class-card'+(!state.activeClass?" on":"")+'" data-action="filter-class" data-id="">全部 · '+state.students.length+'人</div>';
     cards += state.classes.map(function(c){
       var n = state.students.filter(function(s){return s.classId===c.id;}).length;
-      return '<div class="class-card'+(state.activeClass===c.id?" on":"")+'" data-action="filter-class" data-id="'+c.id+'">'+esc(c.name)+(c.term?' <span class="cterm">'+esc(c.term)+'</span>':'')+'<span class="cn">'+n+'</span></div>';
+      var pn = state.entries.filter(function(e){return e.type==="请假" && e.status!=="已补" && stuById(e.studentId) && stuById(e.studentId).classId===c.id;}).length;
+      return '<div class="class-card'+(state.activeClass===c.id?" on":"")+'" data-action="filter-class" data-id="'+c.id+'">'+esc(c.name)+(c.term?' <span class="cterm">'+esc(c.term)+'</span>':'')+'<span class="cn">'+n+(pn?(' · 待补'+pn):'')+'</span></div>';
     }).join("");
     box.innerHTML = cards;
   }
@@ -404,27 +437,95 @@
     return order.map(function(k){ return map[k]; });
   }
 
+  var calY=null, calM=null;
+  function fmtDate(s){ if(!s) return ""; var p=String(s).split("-"); return (p[1]?parseInt(p[1],10):"")+"/"+(p[2]?parseInt(p[2],10):""); }
+  function lmText(e){
+    if(e.type==="补课") return "补课 "+fmtDate(e.date)+(e.lesson?(" 第"+e.lesson+"节"):"");
+    return "请假 "+fmtDate(e.date)+(e.lesson?(" 第"+e.lesson+"节"):"")+" · 补 "+fmtDate(e.makeUpDate||e.date)+(e.lesson?(" 第"+e.lesson+"节"):"");
+  }
+  function renderLM(sid){
+    var box=document.getElementById("lmBlock"); if(!box) return;
+    var pend=state.entries.filter(function(e){return e.studentId===sid && e.type==="请假" && e.status!=="已补";});
+    var done=state.entries.filter(function(e){return e.studentId===sid && (e.type==="补课" || (e.type==="请假"&&e.status==="已补"));});
+    pend.sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
+    done.sort(function(a,b){return (b.date||"").localeCompare(a.date||"");});
+    var html="";
+    if(pend.length){
+      html+='<div class="lm-sec"><div class="lm-h">待补课（'+pend.length+'）</div>';
+      html+=pend.map(function(e){
+        return '<div class="lm-row"><span class="lm-badge" style="background:var(--t-leave)">请假</span>'+
+          '<span class="lm-txt">'+esc(fmtDate(e.date))+(e.lesson?(" 第"+e.lesson+"节"):"")+(e.text?("："+esc(e.text)):"")+'</span>'+
+          '<span class="lm-acts"><button data-action="copy-entry" data-id="'+e.id+'">复制</button>'+
+          '<button data-action="mark-done" data-id="'+e.id+'">已补</button>'+
+          '<button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+          '<button data-action="del-entry" data-id="'+e.id+'">删</button></span></div>';
+      }).join("");
+      html+='</div>';
+    }
+    if(done.length){
+      html+='<div class="lm-sec"><div class="lm-h">已补 / 补课（'+done.length+'）</div>';
+      html+=done.map(function(e){
+        return '<div class="lm-row"><span class="lm-badge" style="background:var(--t-makeup)">'+(e.type==="补课"?"补课":"已补")+'</span>'+
+          '<span class="lm-txt">'+esc(lmText(e))+(e.type==="补课"&&e.text?("："+esc(e.text)):"")+'</span>'+
+          '<span class="lm-acts"><button data-action="copy-entry" data-id="'+e.id+'">复制</button>'+
+          '<button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+          '<button data-action="del-entry" data-id="'+e.id+'">删</button></span></div>';
+      }).join("");
+      html+='</div>';
+    }
+    if(!pend.length && !done.length) html='<div class="empty" style="padding:14px 10px;">这个学生还没有请假 / 补课记录。</div>';
+    box.innerHTML=html;
+  }
+  function renderCalendar(){
+    var now=new Date();
+    if(calY==null){ calY=now.getFullYear(); calM=now.getMonth(); }
+    var first=new Date(calY,calM,1);
+    var startDow=(first.getDay()+6)%7;
+    var daysInMonth=new Date(calY,calM+1,0).getDate();
+    var dows=["一","二","三","四","五","六","日"];
+    var head=dows.map(function(d){return '<div class="cal-dow">'+d+'</div>';}).join("");
+    var cells="";
+    for(var i=0;i<startDow;i++) cells+='<div class="cal-cell muted"></div>';
+    for(var d=1; d<=daysInMonth; d++){
+      var ds=calY+"-"+pad(calM+1)+"-"+pad(d);
+      var hasL=state.entries.some(function(e){return e.type==="请假" && (e.date||"")===ds;});
+      var hasM=state.entries.some(function(e){return (e.type==="补课") || (e.type==="请假" && e.status==="已补" && (e.makeUpDate||"")===ds);});
+      var dots=(hasL?'<span class="dotl"></span>':'')+(hasM?'<span class="dotm"></span>':'');
+      var isT=ds===today();
+      cells+='<div class="cal-cell'+(isT?" today":"")+'">'+d+(dots?'<div class="dots">'+dots+'</div>':'')+'</div>';
+    }
+    var box=document.getElementById("calBox");
+    var sum=document.getElementById("calSummary");
+    var lv=state.entries.filter(function(e){return e.type==="请假";}).length;
+    var mv=state.entries.filter(function(e){return e.type==="补课" || (e.type==="请假"&&e.status==="已补");}).length;
+    if(sum) sum.textContent="请假 "+lv+" · 补课 "+mv;
+    box.innerHTML='<div class="cal-nav"><button class="iconbtn" data-action="cal-prev">‹</button>'+
+      '<div class="mlabel">'+calY+'年'+(calM+1)+'月</div>'+
+      '<button class="iconbtn" data-action="cal-next">›</button></div>'+
+      '<div class="cal-grid">'+head+cells+'</div>';
+  }
+
   function renderDetail(){
     var s = stuById(state.currentStudent); if(!s) return;
     document.getElementById("detail").classList.remove("hidden");
     document.getElementById("home").classList.add("hidden");
     document.getElementById("detailName").textContent = s.name + (classNameOf(s)?(" · "+classNameOf(s)):"");
     var editBtn = document.getElementById("editStuBtn"); if(editBtn) editBtn.setAttribute("data-id", s.id);
-    var chips = ["全部"].concat(TYPES.map(function(t){return t.k;}));
+    var chips = ["全部","上课","家长","随手"];
     document.getElementById("chips").innerHTML = chips.map(function(t){
       return '<button class="chip'+(state.filter===t?" on":"")+'" data-action="filter" data-type="'+t+'">'+t+'</button>';
     }).join("");
-    var ents = state.entries.filter(function(e){return e.studentId===s.id;});
+    renderLM(s.id);
+    var ents = state.entries.filter(function(e){ return e.studentId===s.id && e.type!=="请假" && e.type!=="补课"; });
     if(state.filter!=="全部") ents = ents.filter(function(e){return e.type===state.filter;});
     ents.sort(function(a,b){ return (b.date||"").localeCompare(a.date||"") || (b.createdAt||0)-(a.createdAt||0); });
     var box = document.getElementById("timeline");
-    if(!ents.length){ box.innerHTML = '<div class="empty">这里还空空的，写一笔吧。</div>'; return; }
-        box.innerHTML = groupEntries(ents).map(function(g){
+    if(!ents.length){ box.innerHTML = '<div class="empty">上课 / 家长 / 随手 的记录会显示在这里。</div>'; return; }
+    box.innerHTML = groupEntries(ents).map(function(g){
       var head = g.date + (g.lesson? (' 第'+g.lesson+'节') : '');
       var body = g.items.map(function(e){
-        var st = (e.type==="请假"||e.type==="补课") ? (' · '+(e.status==="已补"?"已补":(e.makeUpDate?("约 "+e.makeUpDate):"待补"))) : '';
         return '<div class="grow"><span class="badge" style="background:'+colorOf(e.type)+'">'+e.type+'</span>'+
-          '<span class="gtxt">'+esc(e.text||"")+(e.text&&st?'<span class="gst">'+esc(st)+'</span>':'')+'</span>'+
+          '<span class="gtxt">'+esc(e.text||"")+'</span>'+
           '<span class="gacts"><button class="mini" data-action="edit-entry" data-id="'+e.id+'">改</button>'+
           '<button class="mini" data-action="del-entry" data-id="'+e.id+'">删</button></span></div>';
       }).join("");
@@ -487,8 +588,6 @@
     var ph = '<option value=""'+(sel===""?" selected":"")+'>选择学生 ▾</option>';
     var opts = state.students.map(function(s){ return '<option value="'+s.id+'"'+(s.id===sel?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("");
     opts = ph + opts;
-    var leaveOpts = '<option value="">不关联</option>';
-    if(sel){ state.entries.filter(function(e){ return e.studentId===sel && e.type==="请假" && e.status!=="已补"; }).forEach(function(e){ leaveOpts += '<option value="'+e.id+'">'+esc(e.date||"")+(e.text?(" "+esc(e.text)):"")+'</option>'; }); }
     var cl = currentLesson();
     var html = '<h3>写一笔</h3>'+
       (state.students.length?'<div class="field"><label>学生</label><select id="nt-stu">'+opts+'</select></div>'
@@ -496,9 +595,8 @@
         '<div class="field"><label>班级（可不填，建好直接归班）</label><select id="nt-newclass">'+classOptions("")+'</select></div>')+
       '<div class="field"><label>类型</label><div id="nt-type">'+typePicker("上课")+'</div></div>'+
       '<div class="field"><label>日期</label><input type="date" id="nt-date" value="'+today()+'"></div>'+
-      '<div class="field"><label>第几节（可不填）</label><input type="number" id="nt-lesson" value="'+(cl||"")+'" placeholder="自动估算"></div>'+
-      '<div class="field"><label>补课关联请假（选「补课」时有效，选了那条请假自动已补）</label><select id="nt-ref">'+leaveOpts+'</select></div>'+
-      '<div class="field"><label>写一句</label><textarea id="nt-text" placeholder="一两句话就够"></textarea></div>'+
+      '<div class="field"><label>第几节（补课必填，其他可不填）</label><input type="number" id="nt-lesson" value="'+(cl||"")+'" placeholder="自动估算"></div>'+
+      '<div class="field"><label>写一句（可不填）</label><textarea id="nt-text" placeholder="一两句话就够"></textarea></div>'+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
       '<button class="primary" data-action="save-note">保存</button></div>';
     openModal(html);
@@ -508,16 +606,16 @@
     var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
     pickedType = e.type;
     var isLC = (e.type==="请假"||e.type==="补课");
-    var leaveOpts = '<option value="">不关联</option>';
-    state.entries.filter(function(x){ return x.studentId===e.studentId && x.type==="请假" && x.status!=="已补" && x.id!==id; }).forEach(function(x){ leaveOpts += '<option value="'+x.id+'">'+esc(x.date||"")+(x.text?(" "+esc(x.text)):"")+'</option>'; });
-    var mk = isLC ? '<div class="field"><label>补课日期（可不填）</label><input type="date" id="ed-mk" value="'+(e.makeUpDate||"")+'"></div>'+
-      '<div class="field"><label>补课第几节（可不填）</label><input type="number" id="ed-mklesson" value="'+(e.lesson||"")+'" placeholder="如：6"></div>'+
-      '<div class="field"><label>补课关联请假（可选）</label><select id="ed-ref">'+leaveOpts+'</select></div>'+
-      '<div class="field"><label><input type="checkbox" id="ed-done"'+(e.status==="已补"?" checked":"")+'> 已补 / 已安排</label></div>' : '';
+    var mk = isLC ? (
+      e.type==="请假"
+      ? '<div class="field"><label>补课日期（标记已补后自动为今天，可改）</label><input type="date" id="ed-mk" value="'+(e.makeUpDate||"")+'"></div>'+
+        '<div class="field"><label><input type="checkbox" id="ed-done"'+(e.status==="已补"?" checked":"")+'> 已补 / 已安排</label></div>'
+      : '<div class="field"><label>补课日期</label><input type="date" id="ed-mk" value="'+(e.date||today())+'"></div>'
+    ) : '';
     var html = '<h3>改一笔</h3>'+
       '<div class="field"><label>类型</label><div id="ed-type">'+typePicker(e.type)+'</div></div>'+
       '<div class="field"><label>日期</label><input type="date" id="ed-date" value="'+(e.date||today())+'"></div>'+
-      (isLC?'<div class="field"><label>第几节（可不填）</label><input type="number" id="ed-lesson" value="'+(e.lesson||"")+'" placeholder="如：4"></div>':'')+
+      (isLC?'<div class="field"><label>第几节（'+(e.type==="补课"?"补课节次":"缺课节次")+'，可不填）</label><input type="number" id="ed-lesson" value="'+(e.lesson||"")+'" placeholder="如：4"></div>':'')+
       '<div class="field"><label>内容</label><textarea id="ed-text">'+esc(e.text||"")+'</textarea></div>'+
       mk+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
@@ -665,10 +763,9 @@
     if(isNew){ var nc=document.getElementById("nt-newclass"); var ncid=nc?nc.value:""; var ns={id:uid(), name:newName, classId:ncid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); sid=ns.id; }
     var ent = { id:uid(), studentId:sid, type:type, text:text, date:date, lesson:lesson?parseInt(lesson,10):null, createdAt:Date.now() };
     stamp(ent);
-    if(type==="请假"||type==="补课") ent.status="待补";
+    if(type==="请假") ent.status="待补";
+    if(type==="补课") ent.status="已补";
     state.entries.push(ent);
-    var ref = document.getElementById("nt-ref") ? document.getElementById("nt-ref").value : "";
-    if(type==="补课" && ref){ var le=state.entries.find(function(x){return x.id===ref;}); if(le) le.status="已补"; }
     state.settings.lastStu = sid;
     save(); closeModal(); pickedStu=[]; pickedType="上课";
     if(state.currentStudent===sid) renderDetail(); else render();
@@ -680,18 +777,22 @@
     e.type = pickedType;
     e.date = document.getElementById("ed-date").value || today();
     if(e.type==="请假"||e.type==="补课"){
-      e.makeUpDate = document.getElementById("ed-mk").value || "";
-      e.status = document.getElementById("ed-done").checked ? "已补" : "待补";
-      var ml = document.getElementById("ed-mklesson").value.trim();
-      if(ml) e.lesson = parseInt(ml,10);
-    } else {
-      delete e.status; delete e.makeUpDate;
       var el = document.getElementById("ed-lesson"); var ev = el?el.value.trim():"";
       e.lesson = ev ? parseInt(ev,10) : null;
+      if(e.type==="请假"){
+        e.makeUpDate = document.getElementById("ed-mk").value || "";
+        e.status = document.getElementById("ed-done").checked ? "已补" : "待补";
+      } else {
+        e.status = "已补";
+        var mkd = document.getElementById("ed-mk").value;
+        if(mkd) e.date = mkd;
+      }
+    } else {
+      delete e.status; delete e.makeUpDate;
+      var el2 = document.getElementById("ed-lesson"); var ev2 = el2?el2.value.trim():"";
+      e.lesson = ev2 ? parseInt(ev2,10) : null;
     }
     e.text = document.getElementById("ed-text").value.trim();
-    var ref = document.getElementById("ed-ref") ? document.getElementById("ed-ref").value : "";
-    if(e.type==="补课" && ref){ var le=state.entries.find(function(x){return x.id===ref;}); if(le) le.status="已补"; }
     save(); closeModal(); pickedType="上课"; render();
   }
 
@@ -742,10 +843,8 @@
 
   function markDone(id){
     var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
-    var mkInput = document.querySelector('[data-mk="'+id+'"]');
-    if(mkInput && mkInput.value) e.makeUpDate = mkInput.value;
-    e.status = "已补"; stamp(e);
-    save(); renderPending();
+    e.status = "已补"; e.makeUpDate = today(); if(e.lesson) e.makeUpLesson = e.lesson; stamp(e);
+    save(); render();
   }
 
   function switchTheme(){
@@ -788,7 +887,9 @@
   }
   function entryText(e){
     var s=stuName(e.studentId);
-    var st=(e.type==="请假"||e.type==="补课")?(" · "+(e.status==="已补"?"已补":(e.makeUpDate?("约 "+e.makeUpDate):"待补"))):"";
+    var st="";
+    if(e.type==="补课") st=" · 补课 "+(e.date||"")+(e.lesson?(" 第"+e.lesson+"节"):"");
+    else if(e.type==="请假") st=" · "+(e.status==="已补"?("已补 "+fmtDate(e.makeUpDate||e.date)+(e.lesson?(" 第"+e.lesson+"节"):"")):(e.makeUpDate?("约 "+fmtDate(e.makeUpDate)):"待补"));
     var les=e.lesson?(" 第"+e.lesson+"节"):"";
     return "【"+s+"】"+e.type+st+" "+(e.date||"")+les+"："+(e.text||"");
   }
@@ -939,6 +1040,9 @@
       case "edit-entry": openEditModal(id); break;
       case "del-entry": if(confirm("删掉这条记录？")){ var de=state.entries.find(function(x){return x.id===id;}); if(de){ state.trash.push(Object.assign({},de,{deletedAt:Date.now()})); if(state.trash.length>10) state.trash.shift(); } state.tomb.entries.push(id); state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
       case "mark-done": markDone(id); break;
+      case "toggle-cal": { var cb=document.getElementById("calBox"); var ct=document.getElementById("calToggle"); var sh=cb.classList.contains("hidden"); cb.classList.toggle("hidden"); if(ct) ct.textContent=sh?"收起":"展开"; break; }
+      case "cal-prev": calM--; if(calM<0){ calM=11; calY--; } renderCalendar(); break;
+      case "cal-next": calM++; if(calM>11){ calM=0; calY++; } renderCalendar(); break;
       case "filter": state.filter = el.getAttribute("data-type"); renderDetail(); break;
       case "filter-class": state.activeClass = id || null; renderClasses(); renderStudents(); break;
       case "manage-classes": showClassPage(); history.pushState({sub:1},""); break;
