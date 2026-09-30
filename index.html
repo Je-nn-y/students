@@ -135,9 +135,11 @@
   .cal-cell{ position:relative; aspect-ratio:1/1; border-radius:8px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--text); }
   .cal-cell.muted{ color:var(--muted); background:transparent; }
   .cal-cell.today{ outline:2px solid var(--accent); }
-  .cal-cell .dots{ position:absolute; bottom:4px; left:0; right:0; display:flex; justify-content:center; gap:3px; }
-  .cal-cell .dotl{ width:6px; height:6px; border-radius:50%; background:var(--t-leave); }
-  .cal-cell .dotm{ width:6px; height:6px; border-radius:50%; background:var(--t-makeup); }
+  .cal-cell.leave{ background:rgba(225,29,72,.16); color:var(--t-leave); font-weight:600; }
+  .cal-cell.makeup{ background:rgba(13,148,136,.16); color:var(--t-makeup); font-weight:600; }
+  .cal-cell.clickable{ cursor:pointer; }
+  .cal-cell.clickable:active{ transform:scale(.96); }
+  .cal-legend{ font-size:11px; color:var(--muted); margin:6px 0 2px; }
   .cal-nav{ display:flex; align-items:center; gap:8px; margin:6px 0 2px; }
   .cal-nav .mlabel{ font-weight:600; font-size:14px; margin:0 auto; }
 
@@ -179,8 +181,9 @@
     </section>
 
     <section id="pendingSec">
-      <div class="sec-head"><h2>待补课</h2><span class="sub" id="pendingCount"></span></div>
-      <div id="pendingList"></div>
+      <div class="sec-head"><h2>待补课</h2><span class="sub" id="pendingCount"></span>
+        <button class="iconbtn" data-action="toggle-pending" id="pendingToggle">展开</button></div>
+      <div id="pendingBox" class="hidden"></div>
     </section>
 
     <section id="classesSec">
@@ -380,14 +383,14 @@
   function renderPending(){
     var list = pendingList();
     document.getElementById("pendingCount").textContent = list.length ? (list.length+" 人待补") : "";
-    var box = document.getElementById("pendingList");
+    var box = document.getElementById("pendingBox");
     if(!list.length){ box.innerHTML = '<div class="pending-empty">暂时没有需要补课的同学。</div>'; return; }
     box.innerHTML = list.map(function(e){
-      var les = e.lesson ? (' 第'+e.lesson+'节') : '';
+      var les = e.lesson ? ('第'+e.lesson+'节') : (fmtDate(e.date||""));
       return '<div class="prow">'+
         '<span class="pdot"></span>'+
         '<span class="pwho">'+esc(stuName(e.studentId))+'</span>'+
-        '<span class="pdate">'+esc(fmtDate(e.date||""))+les+'</span>'+
+        '<span class="pdate">'+esc(les)+'</span>'+
         '<button class="pdo" data-action="mark-done" data-id="'+e.id+'">已补</button></div>';
     }).join("");
   }
@@ -488,18 +491,25 @@
     for(var i=0;i<startDow;i++) cells+='<div class="cal-cell muted"></div>';
     for(var d=1; d<=daysInMonth; d++){
       var ds=calY+"-"+pad(calM+1)+"-"+pad(d);
-      var hasL=state.entries.some(function(e){return e.type==="请假" && (e.date||"")===ds;});
-      var hasM=state.entries.some(function(e){return (e.type==="补课") || (e.type==="请假" && e.status==="已补" && (e.makeUpDate||"")===ds);});
-      var dots=(hasL?'<span class="dotl"></span>':'')+(hasM?'<span class="dotm"></span>':'');
+      var hasPending=state.entries.some(function(e){return e.type==="请假" && e.status!=="已补" && (e.date||"")===ds;});
+      var hasMakeup=state.entries.some(function(e){return (e.type==="补课" && (e.date||"")===ds) || (e.type==="请假" && e.status==="已补" && (e.makeUpDate||"")===ds);});
+      var cls="cal-cell";
+      if(hasPending) cls+=" leave";
+      else if(hasMakeup) cls+=" makeup";
       var isT=ds===today();
-      cells+='<div class="cal-cell'+(isT?" today":"")+'">'+d+(dots?'<div class="dots">'+dots+'</div>':'')+'</div>';
+      if(isT) cls+=" today";
+      var clickable = (hasPending||hasMakeup);
+      if(clickable) cls+=" clickable";
+      var attr = clickable ? (' data-action="cal-day" data-date="'+ds+'"') : '';
+      cells+='<div class="'+cls+'"'+attr+'>'+d+'</div>';
     }
     var box=document.getElementById("calBox");
     var sum=document.getElementById("calSummary");
-    var lv=state.entries.filter(function(e){return e.type==="请假";}).length;
+    var lv=state.entries.filter(function(e){return e.type==="请假" && e.status!=="已补";}).length;
     var mv=state.entries.filter(function(e){return e.type==="补课" || (e.type==="请假"&&e.status==="已补");}).length;
-    if(sum) sum.textContent="请假 "+lv+" · 补课 "+mv;
-    box.innerHTML='<div class="cal-nav"><button class="iconbtn" data-action="cal-prev">‹</button>'+
+    if(sum) sum.textContent="待补 "+lv+" · 已补 "+mv;
+    box.innerHTML='<div class="cal-legend">红=待补　绿=已补（点有颜色的日子看详情）</div>'+
+      '<div class="cal-nav"><button class="iconbtn" data-action="cal-prev">‹</button>'+
       '<div class="mlabel">'+calY+'年'+(calM+1)+'月</div>'+
       '<button class="iconbtn" data-action="cal-next">›</button></div>'+
       '<div class="cal-grid">'+head+cells+'</div>';
@@ -844,7 +854,31 @@
   function markDone(id){
     var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
     e.status = "已补"; e.makeUpDate = today(); if(e.lesson) e.makeUpLesson = e.lesson; stamp(e);
-    save(); render();
+    save(); closeModal(); render();
+  }
+  function openCalDay(ds){
+    var ents = state.entries.filter(function(e){
+      return (e.type==="请假"||e.type==="补课") && ((e.date||"")===ds || (e.type==="请假" && (e.makeUpDate||"")===ds));
+    });
+    if(!ents.length){ toast("这天没有请假 / 补课记录"); return; }
+    ents.sort(function(a,b){
+      var ap=(a.type==="请假"&&a.status!=="已补")?0:1, bp=(b.type==="请假"&&b.status!=="已补")?0:1;
+      return ap-bp;
+    });
+    var rows = ents.map(function(e){
+      var isPend = (e.type==="请假" && e.status!=="已补");
+      var badgeColor = isPend ? "var(--t-leave)" : "var(--t-makeup)";
+      var badgeText = e.type==="补课" ? "补课" : (isPend ? "请假" : "已补");
+      var extra = (e.type==="请假"&&e.status==="已补") ? (" · 原 "+fmtDate(e.date)) : "";
+      return '<div class="lm-row"><span class="lm-badge" style="background:'+badgeColor+'">'+badgeText+'</span>'+
+        '<span class="lm-txt">'+esc(stuName(e.studentId))+(e.lesson?(" 第"+e.lesson+"节"):"")+extra+'</span>'+
+        (isPend?'<span class="lm-acts"><button data-action="mark-done" data-id="'+e.id+'">已补</button></span>':'')+
+        '</div>';
+    }).join("");
+    openModal('<h3>'+ds+' 的请假 / 补课</h3>'+
+      '<div class="pending-empty">红字=还没补的请假，绿字=已补 / 补课。点「已补」可把请假标记为已补。</div>'+
+      rows+
+      '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button></div>');
   }
 
   function switchTheme(){
@@ -1040,6 +1074,8 @@
       case "edit-entry": openEditModal(id); break;
       case "del-entry": if(confirm("删掉这条记录？")){ var de=state.entries.find(function(x){return x.id===id;}); if(de){ state.trash.push(Object.assign({},de,{deletedAt:Date.now()})); if(state.trash.length>10) state.trash.shift(); } state.tomb.entries.push(id); state.entries=state.entries.filter(function(x){return x.id!==id;}); save(); render(); } break;
       case "mark-done": markDone(id); break;
+      case "cal-day": openCalDay(id); break;
+      case "toggle-pending": { var pb=document.getElementById("pendingBox"); var pt=document.getElementById("pendingToggle"); var sh=pb.classList.contains("hidden"); pb.classList.toggle("hidden"); if(pt) pt.textContent=sh?"收起":"展开"; break; }
       case "toggle-cal": { var cb=document.getElementById("calBox"); var ct=document.getElementById("calToggle"); var sh=cb.classList.contains("hidden"); cb.classList.toggle("hidden"); if(ct) ct.textContent=sh?"收起":"展开"; break; }
       case "cal-prev": calM--; if(calM<0){ calM=11; calY--; } renderCalendar(); break;
       case "cal-next": calM++; if(calM>11){ calM=0; calY++; } renderCalendar(); break;
