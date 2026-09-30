@@ -242,8 +242,17 @@
   var THEME_NAME = {navy:"商务蓝", slate:"石墨灰", teal:"墨绿"};
 
   var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes", LS_TOMB = "sr_tomb";
+  var APP_VER = "20260930c";
   var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, trash:[], settings:{theme:"navy", lastStu:"", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
 
+  function checkUpdate(){
+    try{
+      var url = "version.json?t=" + Date.now();
+      fetch(url, { cache: "no-store" }).then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+        if(j && j.ver && j.ver !== APP_VER){ location.reload(true); }
+      }).catch(function(){});
+    }catch(e){}
+  }
   function load(){
     try{ state.students = JSON.parse(localStorage.getItem(LS_STU)) || []; }catch(e){ state.students = []; }
     try{ state.entries = JSON.parse(localStorage.getItem(LS_ENT)) || []; }catch(e){ state.entries = []; }
@@ -1179,6 +1188,7 @@
 
   load();
   if(state.settings.sync && state.settings.sync.on){ initSync(); } else { render(); }
+  checkUpdate();
 })();
 </script>
 </body>
