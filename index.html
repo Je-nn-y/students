@@ -7,7 +7,7 @@
 <style>
   :root{
     --radius:12px; --radius-sm:8px;
-    --t-class:#2563EB; --t-parent:#7C3AED; --t-leave:#E11D48; --t-makeup:#0D9488; --t-note:#64748B;
+    --t-class:#2563EB; --t-parent:#7C3AED; --t-leave:#E11D48; --t-makeup:#0D9488; --t-plan:#CA8A04; --t-note:#64748B;
   }
   body[data-theme="navy"]{ --bg:#EEF1F5; --card:#FFFFFF; --accent:#2C5DA8; --accent-strong:#FFFFFF; --text:#1F2A37; --muted:#6B7280; --line:rgba(15,23,42,.10); --alert:#C2410C; --alert-text:#FFFFFF; --chip:#E5EAF2; }
   body[data-theme="slate"]{ --bg:#F1F3F5; --card:#FFFFFF; --accent:#3F4A5A; --accent-strong:#FFFFFF; --text:#1F2933; --muted:#6B7280; --line:rgba(15,23,42,.10); --alert:#B91C1C; --alert-text:#FFFFFF; --chip:#E7EAEE; }
@@ -135,8 +135,11 @@
   .cal-cell{ position:relative; aspect-ratio:1/1; border-radius:8px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--text); cursor:pointer; }
   .cal-cell.muted{ color:var(--muted); background:transparent; }
   .cal-cell.today{ outline:2px solid var(--accent); }
-  .cal-cell.leave{ background:rgba(225,29,72,.22); color:var(--t-leave); font-weight:600; }
-  .cal-cell.makeup{ background:rgba(13,148,136,.22); color:var(--t-makeup); font-weight:600; }
+  .cal-cell .cal-dots{ position:absolute; bottom:5px; left:0; right:0; display:flex; justify-content:center; gap:4px; }
+  .cal-cell .cal-dots span{ width:7px; height:7px; border-radius:50%; display:block; }
+  .cal-cell .d-leave{ background:var(--t-leave); }
+  .cal-cell .d-plan{ background:var(--t-plan); }
+  .cal-cell .d-makeup{ background:var(--t-makeup); }
   .cal-cell.clickable{ cursor:pointer; }
   .cal-cell.clickable:active{ transform:scale(.96); }
   .cal-legend{ font-size:11px; color:var(--muted); margin:6px 0 2px; }
@@ -242,7 +245,7 @@
   var THEME_NAME = {navy:"商务蓝", slate:"石墨灰", teal:"墨绿"};
 
   var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes", LS_TOMB = "sr_tomb";
-  var APP_VER = "20260930d";
+  var APP_VER = "20261001a";
   var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, trash:[], settings:{theme:"navy", lastStu:"", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
 
   function checkUpdate(){
@@ -499,24 +502,28 @@
     for(var i=0;i<startDow;i++) cells+='<div class="cal-cell muted"></div>';
     for(var d=1; d<=daysInMonth; d++){
       var ds=calY+"-"+pad(calM+1)+"-"+pad(d);
-      var hasPending=state.entries.some(function(e){return e.type==="请假" && e.status!=="已补" && (e.date||"")===ds;});
+      var dots="";
+      var hasLeave=state.entries.some(function(e){return e.type==="请假" && e.status!=="已补" && (e.date||"")===ds;});
+      var hasPlan=state.entries.some(function(e){return e.type==="请假" && e.status!=="已补" && (e.planDate||"")===ds;});
       var hasMakeup=state.entries.some(function(e){
         if(e.type==="补课" && (e.date||"")===ds) return true;
-        if(e.type==="请假" && e.status==="已补"){ if((e.date||"")===ds) return true; if((e.makeUpDate||"")===ds) return true; }
+        if(e.type==="请假" && e.status==="已补"){ if((e.date||"")===ds) return true; if((e.makeUpDate||"")===ds) return true; if((e.planDate||"")===ds) return true; }
         return false;
       });
+      if(hasLeave) dots+='<span class="d-leave"></span>';
+      if(hasPlan) dots+='<span class="d-plan"></span>';
+      if(hasMakeup) dots+='<span class="d-makeup"></span>';
       var cls="cal-cell";
-      if(hasPending) cls+=" leave";
-      else if(hasMakeup) cls+=" makeup";
       if(ds===today()) cls+=" today";
-      cells+='<div class="'+cls+'" data-action="cal-day" data-date="'+ds+'">'+d+'</div>';
+      var dotHtml = dots ? ('<div class="cal-dots">'+dots+'</div>') : '';
+      cells+='<div class="'+cls+'" data-action="cal-day" data-date="'+ds+'">'+d+dotHtml+'</div>';
     }
     var box=document.getElementById("calBox");
     var lv=state.entries.filter(function(e){return e.type==="请假" && e.status!=="已补";}).length;
     var mv=state.entries.filter(function(e){return e.type==="补课" || (e.type==="请假"&&e.status==="已补");}).length;
     var sum=document.getElementById("calPendSummary");
     if(sum) sum.textContent="待补 "+lv+" · 已补 "+mv;
-    box.innerHTML='<div class="cal-legend">红=待补　绿=已补（点任意一天看当天详情）</div>'+
+    box.innerHTML='<div class="cal-legend"><span class="d-leave" style="display:inline-block;vertical-align:middle"></span>红=待补　<span class="d-plan" style="display:inline-block;vertical-align:middle"></span>黄=约定补课　<span class="d-makeup" style="display:inline-block;vertical-align:middle"></span>绿=已补（点任意一天看当天详情）</div>'+
       '<div class="cal-nav"><button class="iconbtn" data-action="cal-prev">‹</button>'+
       '<div class="mlabel">'+calY+'年'+(calM+1)+'月</div>'+
       '<button class="iconbtn" data-action="cal-next">›</button></div>'+
@@ -612,6 +619,7 @@
         :'<div class="field"><label>学生名字（自动新建）</label><input type="text" id="nt-newname" placeholder="如：小明"></div>'+
         '<div class="field"><label>班级（可不填，建好直接归班）</label><select id="nt-newclass">'+classOptions("")+'</select></div>')+
       '<div class="field"><label>类型</label><div id="nt-type">'+typePicker("上课")+'</div></div>'+
+      '<div class="field" id="nt-plan-wrap" style="display:none"><label>预计补课时间（可选，约好哪天补就填哪天）</label><input type="date" id="nt-plan"></div>'+
       '<div class="field"><label>日期</label><input type="date" id="nt-date" value="'+today()+'"></div>'+
       '<div class="field"><label>第几节（补课必填，其他可不填）</label><input type="number" id="nt-lesson" value="'+(cl||"")+'" placeholder="自动估算"></div>'+
       '<div class="field"><label>写一句（可不填）</label><textarea id="nt-text" placeholder="一两句话就够"></textarea></div>'+
@@ -626,7 +634,8 @@
     var isLC = (e.type==="请假"||e.type==="补课");
     var mk = isLC ? (
       e.type==="请假"
-      ? '<div class="field"><label>补课日期（标记已补后自动为今天，可改）</label><input type="date" id="ed-mk" value="'+(e.makeUpDate||"")+'"></div>'+
+      ? '<div class="field"><label>预计补课时间（约定哪天补，可选）</label><input type="date" id="ed-plan" value="'+(e.planDate||"")+'"></div>'+
+        '<div class="field"><label>补课日期（标记已补后自动跳到约定日，可改）</label><input type="date" id="ed-mk" value="'+(e.makeUpDate||"")+'"></div>'+
         '<div class="field"><label><input type="checkbox" id="ed-done"'+(e.status==="已补"?" checked":"")+'> 已补 / 已安排</label></div>'
       : '<div class="field"><label>补课日期</label><input type="date" id="ed-mk" value="'+(e.date||today())+'"></div>'
     ) : '';
@@ -778,10 +787,12 @@
     var date = document.getElementById("nt-date").value || today();
     var lesson = document.getElementById("nt-lesson").value.trim();
     var text = document.getElementById("nt-text").value.trim();
+    var planEl = document.getElementById("nt-plan"); var planVal = planEl ? planEl.value.trim() : "";
     if(isNew){ var nc=document.getElementById("nt-newclass"); var ncid=nc?nc.value:""; var ns={id:uid(), name:newName, classId:ncid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); sid=ns.id; }
     var ent = { id:uid(), studentId:sid, type:type, text:text, date:date, lesson:lesson?parseInt(lesson,10):null, createdAt:Date.now() };
     stamp(ent);
-    if(type==="请假") ent.status="待补";
+    if(type==="请假"){ ent.status="待补"; if(planVal) ent.planDate=planVal; }
+    if(type==="补课") ent.status="已补";
     if(type==="补课") ent.status="已补";
     state.entries.push(ent);
     state.settings.lastStu = sid;
@@ -798,6 +809,8 @@
       var el = document.getElementById("ed-lesson"); var ev = el?el.value.trim():"";
       e.lesson = ev ? parseInt(ev,10) : null;
       if(e.type==="请假"){
+        var planEl = document.getElementById("ed-plan"); var planV = planEl ? planEl.value.trim() : "";
+        if(planV) e.planDate = planV; else delete e.planDate;
         e.makeUpDate = document.getElementById("ed-mk").value || "";
         e.status = document.getElementById("ed-done").checked ? "已补" : "待补";
       } else {
@@ -861,13 +874,13 @@
 
   function markDone(id){
     var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
-    e.status = "已补"; e.makeUpDate = today(); if(e.lesson) e.makeUpLesson = e.lesson; stamp(e);
+    e.status = "已补"; e.makeUpDate = e.planDate || today(); if(e.lesson) e.makeUpLesson = e.lesson; stamp(e);
     save(); closeModal(); render();
   }
   function markDoneGroup(sid){
     var ps = state.entries.filter(function(e){ return e.studentId===sid && e.type==="请假" && e.status!=="已补"; });
     if(!ps.length) return;
-    ps.forEach(function(e){ e.status="已补"; e.makeUpDate=today(); if(e.lesson) e.makeUpLesson=e.lesson; stamp(e); });
+    ps.forEach(function(e){ e.status="已补"; e.makeUpDate=e.planDate||today(); if(e.lesson) e.makeUpLesson=e.lesson; stamp(e); });
     save(); render();
   }
   function openPendDetail(sid){
@@ -875,26 +888,28 @@
     if(!items.length){ toast("没有待补的课了"); return; }
     items.sort(function(a,b){ return (a.lesson||0)-(b.lesson||0) || (b.date||"").localeCompare(a.date||""); });
     var rows = items.map(function(e){
+      var plan = e.planDate ? (' · 约定 '+fmtDate(e.planDate)+' 补') : '';
       return '<div class="lm-row"><span class="lm-badge" style="background:var(--t-leave)">待补</span>'+
-        '<span class="lm-txt">'+esc(fmtDate(e.date))+(e.lesson?(" 第"+e.lesson+"节"):"")+(e.text?("："+esc(e.text)):"")+'</span>'+
+        '<span class="lm-txt">'+esc(fmtDate(e.date))+(e.lesson?(" 第"+e.lesson+"节"):"")+plan+(e.text?("："+esc(e.text)):"")+'</span>'+
         '<span class="lm-acts"><button data-action="pend-mark" data-id="'+e.id+'">已补</button></span></div>';
     }).join("");
     openModal('<h3>'+esc(stuName(sid))+' 的待补课</h3>'+
-      '<div class="pending-empty">点「已补」一节一节标记；标完的会移到「已补 / 补课」。需要一次性全补，点左下角。</div>'+
+      '<div class="pending-empty">点「已补」一节一节标记；标完会跳到「约定补课日」并移到已补。需要一次性全补，点左下角。</div>'+
       rows+
       '<div class="sheet-acts"><button class="ghost" data-action="pend-all" data-id="'+sid+'">全部已补</button>'+
       '<button class="primary" data-action="close-modal">关闭</button></div>');
   }
   function pendMark(id){
     var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
-    e.status = "已补"; e.makeUpDate = today(); if(e.lesson) e.makeUpLesson = e.lesson; stamp(e);
+    e.status = "已补"; e.makeUpDate = e.planDate || today(); if(e.lesson) e.makeUpLesson = e.lesson; stamp(e);
     var stillPend = state.entries.some(function(x){ return x.studentId===e.studentId && x.type==="请假" && x.status!=="已补"; });
     save(); render();
     if(stillPend) openPendDetail(e.studentId); else closeModal();
   }
   function openCalDay(ds){
     var ents = state.entries.filter(function(e){
-      return (e.type==="请假"||e.type==="补课") && ((e.date||"")===ds || (e.type==="请假" && (e.makeUpDate||"")===ds));
+      return (e.type==="请假"||e.type==="补课") &&
+        ((e.date||"")===ds || (e.type==="请假" && (e.makeUpDate||"")===ds) || (e.type==="请假" && e.status!=="已补" && (e.planDate||"")===ds));
     });
     if(!ents.length){ toast("这天没有请假 / 补课记录"); return; }
     ents.sort(function(a,b){
@@ -903,16 +918,20 @@
     });
     var rows = ents.map(function(e){
       var isPend = (e.type==="请假" && e.status!=="已补");
+      var isPlanOnly = isPend && (e.planDate||"")===ds;
       var badgeColor = isPend ? "var(--t-leave)" : "var(--t-makeup)";
       var badgeText = e.type==="补课" ? "补课" : (isPend ? "请假" : "已补");
-      var extra = (e.type==="请假"&&e.status==="已补") ? (" · 原 "+fmtDate(e.date)) : "";
+      var extra = "";
+      if(e.type==="请假"&&e.status==="已补") extra = " · 原 "+fmtDate(e.date);
+      if(isPlanOnly) extra = (extra?extra+" · ":"")+"约定这天补";
+      else if(isPend && e.planDate) extra = (extra?extra+" · ":"")+"约定 "+fmtDate(e.planDate)+" 补";
       return '<div class="lm-row"><span class="lm-badge" style="background:'+badgeColor+'">'+badgeText+'</span>'+
         '<span class="lm-txt">'+esc(stuName(e.studentId))+(e.lesson?(" 第"+e.lesson+"节"):"")+extra+'</span>'+
         (isPend?'<span class="lm-acts"><button data-action="mark-done" data-id="'+e.id+'">已补</button></span>':'')+
         '</div>';
     }).join("");
     openModal('<h3>'+ds+' 的请假 / 补课</h3>'+
-      '<div class="pending-empty">红字=还没补的请假，绿字=已补 / 补课。点「已补」可把请假标记为已补。</div>'+
+      '<div class="pending-empty">红字=还没补的请假，黄字=约定这天补课，绿字=已补 / 补课。点「已补」可把请假标记为已补（自动跳到约定日）。</div>'+
       rows+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button></div>');
   }
@@ -1159,7 +1178,9 @@
       case "pick-type":
         pickedType = el.getAttribute("data-type");
         var seg = el.parentNode; [].forEach.call(seg.children, function(c){ c.classList.remove("on"); });
-        el.classList.add("on"); break;
+        el.classList.add("on");
+        var pw = document.getElementById("nt-plan-wrap"); if(pw) pw.style.display = (pickedType==="请假") ? "" : "none";
+        break;
     }
   });
 
