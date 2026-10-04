@@ -143,6 +143,9 @@
   .cal-cell.clickable{ cursor:pointer; }
   .cal-cell.clickable:active{ transform:scale(.96); }
   .cal-legend{ font-size:11px; color:var(--muted); margin:6px 0 2px; }
+  .cal-cell .cal-num{ position:absolute; top:2px; right:4px; font-size:9px; color:var(--muted); line-height:1; }
+  .agendaBox-empty{ background:var(--card); border-radius:8px; padding:12px; color:var(--muted); font-size:13px; text-align:center; }
+  .agenda-title{ font-size:13px; font-weight:600; color:var(--muted); margin:12px 0 6px; }
   .cal-nav{ display:flex; align-items:center; gap:8px; margin:6px 0 2px; }
   .cal-nav .mlabel{ font-weight:600; font-size:14px; margin:0 auto; }
 
@@ -183,6 +186,12 @@
         <button class="iconbtn" data-action="toggle-calpend" id="calToggle">展开</button></div>
       <div id="calBox" class="hidden"></div>
       <div id="pendingBox" class="hidden"></div>
+      <div id="agendaBox"></div>
+    </section>
+
+    <section id="recentSec">
+      <div class="sec-head"><h2>最近记录</h2><span class="sub" id="recentCount"></span></div>
+      <div id="recentList"></div>
     </section>
 
     <section id="classesSec">
@@ -245,7 +254,7 @@
   var THEME_NAME = {navy:"商务蓝", slate:"石墨灰", teal:"墨绿"};
 
   var LS_STU = "sr_students", LS_ENT = "sr_entries", LS_SET = "sr_settings", LS_CLS = "sr_classes", LS_TOMB = "sr_tomb";
-  var APP_VER = "20261001a";
+  var APP_VER = "20261004a";
   var state = { students:[], entries:[], classes:[], tomb:{students:[],entries:[],classes:[]}, trash:[], settings:{theme:"navy", lastStu:"", sync:{on:false}}, filter:"全部", currentStudent:null, activeClass:null };
 
   function checkUpdate(){
@@ -383,6 +392,8 @@
     document.getElementById("greet").textContent = greet()+" Jenny";
     renderCalendar();
     renderPending();
+    renderAgenda();
+    renderRecent();
     renderClasses();
     renderStudents();
     if(state.currentStudent) renderDetail();
@@ -513,21 +524,58 @@
       if(hasLeave) dots+='<span class="d-leave"></span>';
       if(hasPlan) dots+='<span class="d-plan"></span>';
       if(hasMakeup) dots+='<span class="d-makeup"></span>';
+      var dayCount = state.entries.filter(function(e){
+        return (e.type==="请假"||e.type==="补课") && (
+          (e.date||"")===ds ||
+          (e.type==="请假" && e.status!=="已补" && (e.planDate||"")===ds) ||
+          (e.type==="请假" && e.status==="已补" && (e.makeUpDate||"")===ds)
+        );
+      }).length;
       var cls="cal-cell";
       if(ds===today()) cls+=" today";
       var dotHtml = dots ? ('<div class="cal-dots">'+dots+'</div>') : '';
-      cells+='<div class="'+cls+'" data-action="cal-day" data-date="'+ds+'">'+d+dotHtml+'</div>';
+      var numHtml = dayCount ? ('<span class="cal-num">'+dayCount+'</span>') : '';
+      cells+='<div class="'+cls+'" data-action="cal-day" data-date="'+ds+'">'+d+numHtml+dotHtml+'</div>';
     }
     var box=document.getElementById("calBox");
     var lv=state.entries.filter(function(e){return e.type==="请假" && e.status!=="已补";}).length;
     var mv=state.entries.filter(function(e){return e.type==="补课" || (e.type==="请假"&&e.status==="已补");}).length;
     var sum=document.getElementById("calPendSummary");
     if(sum) sum.textContent="待补 "+lv+" · 已补 "+mv;
-    box.innerHTML='<div class="cal-legend"><span class="d-leave" style="display:inline-block;vertical-align:middle"></span>红=待补　<span class="d-plan" style="display:inline-block;vertical-align:middle"></span>黄=约定补课　<span class="d-makeup" style="display:inline-block;vertical-align:middle"></span>绿=已补（点任意一天看当天详情）</div>'+
-      '<div class="cal-nav"><button class="iconbtn" data-action="cal-prev">‹</button>'+
+    box.innerHTML='<div class="cal-nav"><button class="iconbtn" data-action="cal-prev">‹</button>'+
       '<div class="mlabel">'+calY+'年'+(calM+1)+'月</div>'+
       '<button class="iconbtn" data-action="cal-next">›</button></div>'+
       '<div class="cal-grid">'+head+cells+'</div>';
+  }
+
+  function renderAgenda(){
+    var box=document.getElementById("agendaBox"); if(!box) return;
+    var items = state.entries.filter(function(e){ return e.type==="请假"||e.type==="补课"; });
+    items.sort(function(a,b){ return (a.date||"").localeCompare(b.date||"") || (a.lesson||0)-(b.lesson||0); });
+    if(!items.length){ box.innerHTML='<div class="agenda-title">请假 / 补课 安排</div><div class="agendaBox-empty">还没有请假 / 补课安排。</div>'; return; }
+    var rows = items.map(function(e){
+      var isPend = (e.type==="请假" && e.status!=="已补");
+      var color = isPend ? "var(--t-leave)" : "var(--t-makeup)";
+      var badge = isPend ? "待补" : (e.type==="补课" ? "补课" : "已补");
+      var plan = (isPend && e.planDate) ? (" 约 "+fmtDate(e.planDate)+"补") : "";
+      var txt = esc(stuName(e.studentId))+" "+(e.lesson?("第"+e.lesson+"节"):"")+plan;
+      var acts = '<span class="lm-acts"><button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+        (isPend?'<button data-action="mark-done" data-id="'+e.id+'">已补</button>':'')+'</span>';
+      return '<div class="lm-row"><span class="lm-badge" style="background:'+color+'">'+badge+'</span>'+
+        '<span class="lm-txt"><span style="color:var(--muted);margin-right:6px;">'+fmtDate(e.date)+'</span>'+txt+'</span>'+acts+'</div>';
+    }).join("");
+    box.innerHTML='<div class="agenda-title">请假 / 补课 安排（'+items.length+'）</div>'+rows;
+  }
+  function renderRecent(){
+    var box=document.getElementById("recentList"); if(!box) return;
+    var list = state.entries.slice().sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); }).slice(0,8);
+    document.getElementById("recentCount").textContent = state.entries.length ? (state.entries.length+" 条") : "";
+    if(!list.length){ box.innerHTML='<div class="agendaBox-empty">还没有记录，点下面「写一笔」开始吧。</div>'; return; }
+    box.innerHTML = list.map(function(e){
+      var txt = esc(stuName(e.studentId))+" · "+(e.date?fmtDate(e.date):"")+(e.lesson?(" 第"+e.lesson+"节"):"")+(e.text?("："+esc(e.text)):"");
+      return '<div class="lm-row" data-action="edit-entry" data-id="'+e.id+'"><span class="lm-badge" style="background:'+colorOf(e.type)+'">'+esc(e.type)+'</span>'+
+        '<span class="lm-txt">'+txt+'</span></div>';
+    }).join("");
   }
 
   function renderDetail(){
@@ -594,10 +642,10 @@
   }
 
   function openLessonModal(){
-    var cl = currentLesson();
+    var cl = currentLesson(); pickedLesson = cl ? Number(cl) : null; pickedStu = [];
     var html = '<h3>记一堂课</h3>'+
       '<div class="field"><label>日期</label><input type="date" id="ls-date" value="'+today()+'"></div>'+
-      '<div class="field"><label>第几节（自动估算，可改）</label><input type="number" id="ls-lesson" value="'+(cl||"")+'" placeholder="如：4"></div>'+
+      '<div class="field"><label>第几节（点数字选择）</label>'+lessonPickerHTML(pickedLesson)+'</div>'+
       '<div class="field"><label>班级（选后可一键选全班）</label><select id="ls-classsel">'+classOptions("")+'</select></div>'+
       '<div class="field"><label>选学生（可多选；也可先选班级再点「选全班」）</label><div id="ls-pick">'+studentPicker([])+'</div>'+
       '<button class="iconbtn" data-action="pick-class-all" style="background:var(--bg);margin-top:4px;">选全班</button></div>'+
@@ -608,20 +656,22 @@
   }
 
   function openNoteModal(preStu){
-    var last = state.settings.lastStu;
-    var sel = preStu || state.currentStudent || (last && stuById(last) ? last : "");
-    var ph = '<option value=""'+(sel===""?" selected":"")+'>选择学生 ▾</option>';
-    var opts = state.students.map(function(s){ return '<option value="'+s.id+'"'+(s.id===sel?" selected":"")+'>'+esc(s.name)+'</option>'; }).join("");
-    opts = ph + opts;
-    var cl = currentLesson();
+    pickedStu = []; pickedType = "上课";
+    var cl = currentLesson(); pickedLesson = cl ? Number(cl) : null;
+    var sel = preStu || state.currentStudent || (state.settings.lastStu && stuById(state.settings.lastStu) ? state.settings.lastStu : "");
+    if(sel) pickedStu = [sel];
     var html = '<h3>写一笔</h3>'+
-      (state.students.length?'<div class="field"><label>学生</label><select id="nt-stu">'+opts+'</select></div>'
-        :'<div class="field"><label>学生名字（自动新建）</label><input type="text" id="nt-newname" placeholder="如：小明"></div>'+
-        '<div class="field"><label>班级（可不填，建好直接归班）</label><select id="nt-newclass">'+classOptions("")+'</select></div>')+
+      (state.students.length
+        ? '<div class="field"><label>学生（可多选，一次给多个学生记同一件事）</label><div id="nt-pick">'+studentPicker(pickedStu)+'</div>'+
+          '<details style="margin-top:4px;"><summary style="font-size:13px;color:var(--muted);cursor:pointer;">或新建一个学生</summary>'+
+          '<div class="field" style="margin-top:8px;"><label>新学生名字</label><input type="text" id="nt-newname" placeholder="如：小明"></div>'+
+          '<div class="field"><label>班级（可不填，建好直接归班）</label><select id="nt-newclass">'+classOptions("")+'</select></div></details>'
+        : '<div class="field"><label>学生名字（自动新建）</label><input type="text" id="nt-newname" placeholder="如：小明"></div>'+
+          '<div class="field"><label>班级（可不填，建好直接归班）</label><select id="nt-newclass">'+classOptions("")+'</select></div>')+
       '<div class="field"><label>类型</label><div id="nt-type">'+typePicker("上课")+'</div></div>'+
       '<div class="field" id="nt-plan-wrap" style="display:none"><label>预计补课时间（可选，约好哪天补就填哪天）</label><input type="date" id="nt-plan"></div>'+
       '<div class="field"><label>日期</label><input type="date" id="nt-date" value="'+today()+'"></div>'+
-      '<div class="field"><label>第几节（补课必填，其他可不填）</label><input type="number" id="nt-lesson" value="'+(cl||"")+'" placeholder="自动估算"></div>'+
+      '<div class="field"><label>第几节（点数字选择，补课/请假必填，其他可不填）</label>'+lessonPickerHTML(pickedLesson)+'</div>'+
       '<div class="field"><label>写一句（可不填）</label><textarea id="nt-text" placeholder="一两句话就够"></textarea></div>'+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
       '<button class="primary" data-action="save-note">保存</button></div>';
@@ -631,6 +681,7 @@
   function openEditModal(id){
     var e = state.entries.find(function(x){return x.id===id;}); if(!e) return;
     pickedType = e.type;
+    pickedLesson = (e.type==="请假"||e.type==="补课") ? e.lesson : null;
     var isLC = (e.type==="请假"||e.type==="补课");
     var mk = isLC ? (
       e.type==="请假"
@@ -642,7 +693,7 @@
     var html = '<h3>改一笔</h3>'+
       '<div class="field"><label>类型</label><div id="ed-type">'+typePicker(e.type)+'</div></div>'+
       '<div class="field"><label>日期</label><input type="date" id="ed-date" value="'+(e.date||today())+'"></div>'+
-      (isLC?'<div class="field"><label>第几节（'+(e.type==="补课"?"补课节次":"缺课节次")+'，可不填）</label><input type="number" id="ed-lesson" value="'+(e.lesson||"")+'" placeholder="如：4"></div>':'')+
+      (isLC?'<div class="field"><label>第几节（点数字选择）</label>'+lessonPickerHTML(e.lesson)+'</div>':'')+
       '<div class="field"><label>内容</label><textarea id="ed-text">'+esc(e.text||"")+'</textarea></div>'+
       mk+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">取消</button>'+
@@ -764,11 +815,18 @@
   }
 
   // ---- actions ----
-  var pickedStu = []; var pickedType = "上课";
+  var pickedStu = []; var pickedType = "上课"; var pickedLesson = null;
+
+  function lessonPickerHTML(selected){
+    var cur = (selected==null) ? null : selected;
+    var h = '<span class="pick'+(cur==null?' on':'')+'" data-action="pick-lesson" data-val="">不填</span>';
+    for(var i=1;i<=12;i++){ h += '<span class="pick'+(cur===i?' on':'')+'" data-action="pick-lesson" data-val="'+i+'">'+i+'</span>'; }
+    return '<div class="seg" style="margin-top:2px;">'+h+'</div>';
+  }
 
   function saveLesson(){
     var date = document.getElementById("ls-date").value || today();
-    var lesson = document.getElementById("ls-lesson").value.trim();
+    var lesson = pickedLesson;
     var text = document.getElementById("ls-text").value.trim();
     if(!pickedStu.length){ alert("先选至少一个学生"); return; }
     var lessonId = uid();
@@ -776,28 +834,40 @@
       var ent = { id:uid(), studentId:sid, type:"上课", text:text, date:date, lesson:lesson?parseInt(lesson,10):null, lessonId:lessonId, createdAt:Date.now() };
       stamp(ent); state.entries.push(ent);
     });
-    save(); closeModal(); pickedStu=[]; render();
+    save(); closeModal(); pickedStu=[]; pickedLesson=null; render();
   }
 
   function saveNote(){
-    var sid, isNew=false, newName="";
-    if(state.students.length){ sid = document.getElementById("nt-stu").value; if(!sid){ alert("请先选择学生"); return; } }
-    else { newName = document.getElementById("nt-newname").value.trim(); if(!newName){ alert("填一下学生名字"); return; } isNew=true; }
     var type = pickedType;
     var date = document.getElementById("nt-date").value || today();
-    var lesson = document.getElementById("nt-lesson").value.trim();
+    var lesson = pickedLesson;
     var text = document.getElementById("nt-text").value.trim();
     var planEl = document.getElementById("nt-plan"); var planVal = planEl ? planEl.value.trim() : "";
-    if(isNew){ var nc=document.getElementById("nt-newclass"); var ncid=nc?nc.value:""; var ns={id:uid(), name:newName, classId:ncid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); sid=ns.id; }
-    var ent = { id:uid(), studentId:sid, type:type, text:text, date:date, lesson:lesson?parseInt(lesson,10):null, createdAt:Date.now() };
-    stamp(ent);
-    if(type==="请假"){ ent.status="待补"; if(planVal) ent.planDate=planVal; }
-    if(type==="补课") ent.status="已补";
-    if(type==="补课") ent.status="已补";
-    state.entries.push(ent);
-    state.settings.lastStu = sid;
-    save(); closeModal(); pickedStu=[]; pickedType="上课";
-    if(state.currentStudent===sid) renderDetail(); else render();
+    var sids = [];
+    if(state.students.length){
+      if(pickedStu.length){ sids = pickedStu.slice(); }
+      else {
+        var nn = document.getElementById("nt-newname"); var nnv = nn ? nn.value.trim() : "";
+        if(!nnv){ alert("至少勾选一个学生，或在「或新建一个学生」里填名字"); return; }
+        var nc=document.getElementById("nt-newclass"); var ncid=nc?nc.value:"";
+        var ns={id:uid(), name:nnv, classId:ncid, classTag:"", createdAt:Date.now()}; stamp(ns); state.students.push(ns); sids=[ns.id];
+      }
+    } else {
+      var nm = document.getElementById("nt-newname"); var nmv = nm ? nm.value.trim() : "";
+      if(!nmv){ alert("填一下学生名字"); return; }
+      var ncc=document.getElementById("nt-newclass"); var nccid=ncc?ncc.value:"";
+      var ns2={id:uid(), name:nmv, classId:nccid, classTag:"", createdAt:Date.now()}; stamp(ns2); state.students.push(ns2); sids=[ns2.id];
+    }
+    sids.forEach(function(sid){
+      var ent = { id:uid(), studentId:sid, type:type, text:text, date:date, lesson:lesson?parseInt(lesson,10):null, createdAt:Date.now() };
+      stamp(ent);
+      if(type==="请假"){ ent.status="待补"; if(planVal) ent.planDate=planVal; }
+      if(type==="补课") ent.status="已补";
+      state.entries.push(ent);
+    });
+    state.settings.lastStu = sids[sids.length-1];
+    save(); closeModal(); pickedStu=[]; pickedType="上课"; pickedLesson=null;
+    if(state.currentStudent && sids.indexOf(state.currentStudent)>=0) renderDetail(); else render();
   }
 
   function saveEdit(id){
@@ -806,8 +876,7 @@
     e.type = pickedType;
     e.date = document.getElementById("ed-date").value || today();
     if(e.type==="请假"||e.type==="补课"){
-      var el = document.getElementById("ed-lesson"); var ev = el?el.value.trim():"";
-      e.lesson = ev ? parseInt(ev,10) : null;
+      e.lesson = pickedLesson;
       if(e.type==="请假"){
         var planEl = document.getElementById("ed-plan"); var planV = planEl ? planEl.value.trim() : "";
         if(planV) e.planDate = planV; else delete e.planDate;
@@ -819,12 +888,10 @@
         if(mkd) e.date = mkd;
       }
     } else {
-      delete e.status; delete e.makeUpDate;
-      var el2 = document.getElementById("ed-lesson"); var ev2 = el2?el2.value.trim():"";
-      e.lesson = ev2 ? parseInt(ev2,10) : null;
+      e.lesson = null; delete e.status; delete e.makeUpDate;
     }
     e.text = document.getElementById("ed-text").value.trim();
-    save(); closeModal(); pickedType="上课"; render();
+    save(); closeModal(); pickedType="上课"; pickedLesson=null; render();
   }
 
   function saveStu(id){
@@ -891,7 +958,8 @@
       var plan = e.planDate ? (' · 约定 '+fmtDate(e.planDate)+' 补') : '';
       return '<div class="lm-row"><span class="lm-badge" style="background:var(--t-leave)">待补</span>'+
         '<span class="lm-txt">'+esc(fmtDate(e.date))+(e.lesson?(" 第"+e.lesson+"节"):"")+plan+(e.text?("："+esc(e.text)):"")+'</span>'+
-        '<span class="lm-acts"><button data-action="pend-mark" data-id="'+e.id+'">已补</button></span></div>';
+        '<span class="lm-acts"><button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+        '<button data-action="pend-mark" data-id="'+e.id+'">已补</button></span></div>';
     }).join("");
     openModal('<h3>'+esc(stuName(sid))+' 的待补课</h3>'+
       '<div class="pending-empty">点「已补」一节一节标记；标完会跳到「约定补课日」并移到已补。需要一次性全补，点左下角。</div>'+
@@ -927,11 +995,12 @@
       else if(isPend && e.planDate) extra = (extra?extra+" · ":"")+"约定 "+fmtDate(e.planDate)+" 补";
       return '<div class="lm-row"><span class="lm-badge" style="background:'+badgeColor+'">'+badgeText+'</span>'+
         '<span class="lm-txt">'+esc(stuName(e.studentId))+(e.lesson?(" 第"+e.lesson+"节"):"")+extra+'</span>'+
-        (isPend?'<span class="lm-acts"><button data-action="mark-done" data-id="'+e.id+'">已补</button></span>':'')+
+        '<span class="lm-acts"><button data-action="edit-entry" data-id="'+e.id+'">改</button>'+
+        (isPend?'<button data-action="mark-done" data-id="'+e.id+'">已补</button>':'')+'</span>'+
         '</div>';
     }).join("");
     openModal('<h3>'+ds+' 的请假 / 补课</h3>'+
-      '<div class="pending-empty">红字=还没补的请假，黄字=约定这天补课，绿字=已补 / 补课。点「已补」可把请假标记为已补（自动跳到约定日）。</div>'+
+      '<div class="pending-empty">点「已补」可把请假标记为已补（自动跳到约定日）。点「改」可直接编辑这条记录。</div>'+
       rows+
       '<div class="sheet-acts"><button class="ghost" data-action="close-modal">关闭</button></div>');
   }
@@ -1180,6 +1249,12 @@
         var seg = el.parentNode; [].forEach.call(seg.children, function(c){ c.classList.remove("on"); });
         el.classList.add("on");
         var pw = document.getElementById("nt-plan-wrap"); if(pw) pw.style.display = (pickedType==="请假") ? "" : "none";
+        break;
+      case "pick-lesson":
+        var lv = el.getAttribute("data-val");
+        pickedLesson = (lv==="") ? null : parseInt(lv,10);
+        var lseg = el.parentNode; [].forEach.call(lseg.children, function(c){ c.classList.remove("on"); });
+        el.classList.add("on");
         break;
     }
   });
